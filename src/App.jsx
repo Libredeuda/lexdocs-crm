@@ -1,30 +1,60 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Login from "./components/Login";
 import ClientApp from "./client/ClientApp";
 import AdminApp from "./admin/AdminApp";
-import { useAuth } from "./lib/hooks/useAuth";
+import { supabase } from "./lib/supabase";
 import { DEMO } from "./constants";
 
 export default function App() {
-  const { user: supaUser, loading, login: supaLogin, logout: supaLogout } = useAuth();
-  const [demoUser, setDemoUser] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Determine active user (Supabase auth takes priority, then demo fallback)
-  const user = supaUser || demoUser;
+  // On mount: check if there's an existing Supabase session
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const profile = await fetchProfile(session.user.id);
+        if (profile) {
+          setUser(profile);
+        }
+      }
+      setLoading(false);
+    });
+  }, []);
+
+  async function fetchProfile(userId) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*, organizations(*)')
+      .eq('id', userId)
+      .single();
+    if (error) {
+      console.error('Profile fetch error:', error);
+      return null;
+    }
+    return data;
+  }
 
   async function handleLogin(email, password) {
     // Try Supabase auth first
     try {
-      await supaLogin(email, password);
-      return; // Success - useAuth will set the user
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+
+      const profile = await fetchProfile(data.user.id);
+      if (profile) {
+        setUser(profile);
+        return;
+      }
+      throw new Error('Usuario no encontrado en el sistema');
     } catch (e) {
-      console.log('Supabase auth failed, trying demo mode:', e.message);
+      console.log('Supabase auth failed:', e.message);
     }
 
     // Fallback: demo credentials
     const found = DEMO.find(c => c.email === email && c.password === password);
     if (found) {
-      setDemoUser(found);
+      setUser(found);
       return;
     }
 
@@ -32,10 +62,8 @@ export default function App() {
   }
 
   function handleLogout() {
-    if (supaUser) {
-      supaLogout();
-    }
-    setDemoUser(null);
+    supabase.auth.signOut();
+    setUser(null);
   }
 
   if (loading) {
@@ -52,10 +80,9 @@ export default function App() {
 
   if (!user) return <Login onLogin={handleLogin} />;
 
-  // Determine role: Supabase user has role in the record, demo user has role property
   const role = user.role;
 
-  if (role === 'admin' || role === 'owner' || role === 'lawyer') {
+  if (role === 'admin' || role === 'owner' || role === 'lawyer' || role === 'staff') {
     return <AdminApp user={user} onLogout={handleLogout} />;
   }
 
