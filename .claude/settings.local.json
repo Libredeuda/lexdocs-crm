@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npx vite:*)",
+      "Bash(npm install:*)",
+      "Bash(open \"/Users/josetorrecilla/Downloads/LIBREDEUDA/lexdocs-test 2/supabase/schema.sql\")",
+      "Bash(open -a TextEdit \"/Users/josetorrecilla/Downloads/LIBREDEUDA/lexdocs-test 2/supabase/schema.sql\")",
+      "Bash(open -a TextEdit \"/Users/josetorrecilla/Downloads/LIBREDEUDA/lexdocs-test 2/supabase/seed.sql\")",
+      "Bash(osascript -e 'tell application \"TextEdit\" to quit')",
+      "Bash(pbcopy)"
+    ]
+  }
+}
