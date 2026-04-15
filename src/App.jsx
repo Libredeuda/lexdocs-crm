@@ -8,31 +8,44 @@ import { DEMO } from "./constants";
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [appError, setAppError] = useState(null);
 
   // On mount: check if there's an existing Supabase session
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const profile = await fetchProfile(session.user.id);
-        if (profile) {
-          setUser(profile);
+    async function init() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const profile = await fetchProfile(session.user.id);
+          if (profile) {
+            setUser(profile);
+          }
         }
+      } catch (e) {
+        console.error('Init error:', e);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    }
+    init();
   }, []);
 
   async function fetchProfile(userId) {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*, organizations(*)')
-      .eq('id', userId)
-      .single();
-    if (error) {
-      console.error('Profile fetch error:', error);
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*, organizations(*)')
+        .eq('id', userId)
+        .single();
+      if (error) {
+        console.error('Profile fetch error:', error);
+        return null;
+      }
+      return data;
+    } catch (e) {
+      console.error('Profile exception:', e);
       return null;
     }
-    return data;
   }
 
   async function handleLogin(email, password) {
@@ -46,7 +59,6 @@ export default function App() {
         setUser(profile);
         return;
       }
-      throw new Error('Usuario no encontrado en el sistema');
     } catch (e) {
       console.log('Supabase auth failed:', e.message);
     }

@@ -150,10 +150,10 @@ export default function AdminApp({ user, onLogout }) {
         <div style={{ padding: "14px 14px 18px", borderTop: `1px solid ${C.sidebarMid}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
             <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.sidebarLight, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.primaryLight }}>{user.name.charAt(0)}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.primaryLight }}>{(user.full_name || user.name || 'A').charAt(0)}</span>
             </div>
             <div>
-              <p style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{user.name}</p>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{user.full_name || user.name || 'Admin'}</p>
               <p style={{ fontSize: 9.5, color: C.textLight }}>Administrador</p>
             </div>
           </div>
