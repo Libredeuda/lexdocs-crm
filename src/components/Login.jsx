@@ -23,10 +23,10 @@ export default function Login({ onLogin }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", fontFamily: font, background: C.sidebar, position: "relative", overflow: "hidden" }}>
       <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-      <style>{`*{box-sizing:border-box;margin:0;padding:0}input:focus{outline:none;border-color:${C.primary}!important;box-shadow:0 0 0 3px rgba(91,107,240,.2)}button{cursor:pointer;border:none;font-family:${font}}@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <style>{`*{box-sizing:border-box;margin:0;padding:0}input:focus{outline:none;border-color:${C.primary}!important;box-shadow:0 0 0 3px rgba(91,107,240,.2)}button{cursor:pointer;border:none;font-family:${font}}@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}@media(max-width:768px){.login-hero{display:none!important}.login-form{flex:1!important;padding:20px!important}}`}</style>
       <div style={{ position: "absolute", top: -80, right: -60, width: 300, height: 300, borderRadius: "50%", background: C.teal, opacity: .06 }} />
       <div style={{ position: "absolute", bottom: -100, left: -40, width: 250, height: 250, borderRadius: "50%", background: C.primary, opacity: .08 }} />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: 50, maxWidth: 520 }}>
+      <div className="login-hero" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: 50, maxWidth: 520 }}>
         <div style={{ animation: "fadeIn .6s ease both" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 36 }}>
             <img src={LOGO} alt="LibreDeuda" style={{ width: 48, height: 48, borderRadius: 12 }} />
@@ -36,7 +36,7 @@ export default function Login({ onLogin }) {
           <p style={{ fontSize: 15, color: "rgba(255,255,255,.4)", lineHeight: 1.7, maxWidth: 380 }}>Sube cada documento y la IA lo verifica al instante. Si algo está mal, te decimos qué hacer.</p>
         </div>
       </div>
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 32 }}>
+      <div className="login-form" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 32 }}>
         <div style={{ width: "100%", maxWidth: 380, background: C.white, borderRadius: 20, padding: "40px 32px", boxShadow: "0 20px 60px rgba(0,0,0,.3)", animation: "fadeIn .6s ease .2s both" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}><img src={LOGO} alt="" style={{ width: 28, height: 28, borderRadius: 6 }} /><span style={{ fontSize: 18, fontWeight: 700, color: C.dark }}>Acceder</span></div>
           <label style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4, color: C.textMuted }}>Email</label>
