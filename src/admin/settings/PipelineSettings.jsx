@@ -98,7 +98,7 @@ export default function PipelineSettings() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {stages.map((stage, i) => (
             <div key={stage.id} style={{
-              display: "flex", alignItems: "center", gap: 10,
+              display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
               padding: "10px 14px", borderRadius: 10,
               border: `1px solid ${C.border}`, background: "#fafafa",
               transition: ".15s",

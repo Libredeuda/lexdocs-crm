@@ -209,12 +209,12 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
       </div>
 
       {/* Two-column layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 18, alignItems: "start" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 18, alignItems: "flex-start" }}>
         {/* Left column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 300, flex: "1 1 60%" }}>
           {/* Info card */}
           <Card title="Informacion" icon={FileText}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
               {[
                 { label: "Nombre", value: data.first_name },
                 { label: "Apellidos", value: data.last_name },
@@ -281,7 +281,7 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
         </div>
 
         {/* Right column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 280, flex: "1 1 35%" }}>
           {/* Status card */}
           <Card title="Estado" icon={Tag}>
             <div style={{ marginBottom: 14 }}>

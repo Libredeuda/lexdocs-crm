@@ -145,7 +145,7 @@ export default function OrgSettings() {
         {/* Primary color */}
         <div style={{ marginBottom: 18 }}>
           <label style={label}>Color primario</label>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <input
               type="color"
               value={primaryColor}

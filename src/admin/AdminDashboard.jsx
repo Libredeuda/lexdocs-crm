@@ -35,7 +35,7 @@ export default function AdminDashboard({ cases, setPage }) {
   return (
     <div>
       {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, marginBottom: 22 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginBottom: 22 }}>
         {kpis.map((k, i) => (
           <div key={i} style={{ background: C.card, borderRadius: 14, padding: "20px 22px", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 46, height: 46, borderRadius: 12, background: k.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -50,7 +50,7 @@ export default function AdminDashboard({ cases, setPage }) {
       </div>
 
       {/* Charts row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, marginBottom: 22 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginBottom: 22 }}>
         {/* Progress by client */}
         <div style={{ background: C.card, borderRadius: 14, padding: "20px 22px", border: `1px solid ${C.border}` }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Progreso por expediente</h3>

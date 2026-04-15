@@ -126,7 +126,7 @@ export default function ContactList({ setPage, setSelectedContact }) {
       </div>
 
       {/* Stats bar */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 18 }}>
         {[
           { label: "Total contactos", value: totalContacts, icon: Users, color: C.primary, bg: "rgba(91,107,240,0.08)" },
           { label: "Leads este mes", value: leadsThisMonth, icon: UserPlus, color: C.blue, bg: "rgba(59,130,246,0.08)" },
@@ -207,12 +207,12 @@ export default function ContactList({ setPage, setSelectedContact }) {
       </p>
 
       {/* Table */}
-      <div style={{ background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+      <div style={{ background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, overflow: "hidden", overflowX: "auto" }}>
         {/* Table header */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "2.2fr 1.2fr 1fr 1fr 1fr 1fr 60px",
-          gap: 8, padding: "12px 18px",
+          gap: 8, padding: "12px 18px", minWidth: 700,
           borderBottom: `1px solid ${C.border}`, background: C.bg,
         }}>
           {["Nombre", "Telefono", "Estado", "Fuente", "Asignado a", "Ultima act.", ""].map(h => (
@@ -248,7 +248,7 @@ export default function ContactList({ setPage, setSelectedContact }) {
               style={{
                 display: "grid",
                 gridTemplateColumns: "2.2fr 1.2fr 1fr 1fr 1fr 1fr 60px",
-                gap: 8, padding: "13px 18px",
+                gap: 8, padding: "13px 18px", minWidth: 700,
                 borderBottom: i < contacts.length - 1 ? `1px solid ${C.bg}` : "none",
                 cursor: "pointer", transition: "background .15s",
                 background: hoveredRow === c.id ? C.bg : "transparent",

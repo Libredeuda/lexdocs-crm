@@ -114,9 +114,9 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
 
       {/* Kanban board */}
       <div style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${columns.length}, 1fr)`,
+        display: "flex",
         gap: 12, minHeight: 500,
+        overflowX: "auto", paddingBottom: 8,
       }}>
         {columns.map(col => {
           const colContacts = contacts.filter(c => c.status === col.key);
@@ -134,6 +134,7 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
                 border: isOver ? `2px dashed ${col.color}` : `1px solid ${C.border}`,
                 transition: "all .2s",
                 minHeight: 400,
+                minWidth: 200, flex: "1 0 200px",
               }}
             >
               {/* Column header */}

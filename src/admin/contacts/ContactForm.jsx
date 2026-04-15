@@ -101,8 +101,8 @@ export default function ContactForm({ contact, onSave, onClose }) {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: "20px 24px" }}>
           {/* Name row */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-            <div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
+            <div style={{ minWidth: 200, flex: "1 1 45%" }}>
               <label style={labelStyle}>Nombre *</label>
               <input
                 value={form.first_name}
@@ -112,7 +112,7 @@ export default function ContactForm({ contact, onSave, onClose }) {
                 style={inputStyle}
               />
             </div>
-            <div>
+            <div style={{ minWidth: 200, flex: "1 1 45%" }}>
               <label style={labelStyle}>Apellidos</label>
               <input
                 value={form.last_name}
@@ -124,8 +124,8 @@ export default function ContactForm({ contact, onSave, onClose }) {
           </div>
 
           {/* Email + phone row */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-            <div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
+            <div style={{ minWidth: 200, flex: "1 1 45%" }}>
               <label style={labelStyle}>Email *</label>
               <input
                 type="email"
@@ -136,7 +136,7 @@ export default function ContactForm({ contact, onSave, onClose }) {
                 style={inputStyle}
               />
             </div>
-            <div>
+            <div style={{ minWidth: 200, flex: "1 1 45%" }}>
               <label style={labelStyle}>Telefono</label>
               <input
                 value={form.phone}

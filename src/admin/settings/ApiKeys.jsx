@@ -143,12 +143,12 @@ export default function ApiKeys() {
       {/* Table */}
       <div style={{
         background: C.white, borderRadius: 14,
-        border: `1px solid ${C.border}`, overflow: "hidden", marginBottom: 20,
+        border: `1px solid ${C.border}`, overflow: "hidden", overflowX: "auto", marginBottom: 20,
       }}>
         <div style={{
           display: "grid",
           gridTemplateColumns: "1.5fr 2fr 1fr 1fr 0.7fr 100px",
-          padding: "12px 20px", background: "#f8f8fa",
+          padding: "12px 20px", background: "#f8f8fa", minWidth: 700,
           borderBottom: `1px solid ${C.border}`,
           fontSize: 11, fontWeight: 600, color: C.textMuted,
           textTransform: "uppercase", letterSpacing: ".04em",
@@ -164,7 +164,7 @@ export default function ApiKeys() {
           <div key={k.id} style={{
             display: "grid",
             gridTemplateColumns: "1.5fr 2fr 1fr 1fr 0.7fr 100px",
-            padding: "14px 20px", alignItems: "center",
+            padding: "14px 20px", alignItems: "center", minWidth: 700,
             borderBottom: `1px solid ${C.border}`,
             opacity: k.is_active ? 1 : 0.45,
           }}>
@@ -275,7 +275,7 @@ export default function ApiKeys() {
                 <label style={{ fontSize: 12, fontWeight: 600, color: C.text, display: "block", marginBottom: 10 }}>
                   Permisos
                 </label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 22 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, marginBottom: 22 }}>
                   {PERM_OPTIONS.map((opt) => (
                     <div key={opt.key} style={{
                       padding: "10px 14px", borderRadius: 10,

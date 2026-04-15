@@ -78,13 +78,13 @@ export default function TeamMembers() {
       {/* Table */}
       <div style={{
         background: C.white, borderRadius: 14,
-        border: `1px solid ${C.border}`, overflow: "hidden",
+        border: `1px solid ${C.border}`, overflow: "hidden", overflowX: "auto",
       }}>
         {/* Header row */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "2fr 2fr 1fr 1fr 120px",
-          padding: "12px 20px",
+          padding: "12px 20px", minWidth: 600,
           background: "#f8f8fa",
           borderBottom: `1px solid ${C.border}`,
           fontSize: 11, fontWeight: 600, color: C.textMuted,
@@ -105,7 +105,7 @@ export default function TeamMembers() {
               style={{
                 display: "grid",
                 gridTemplateColumns: "2fr 2fr 1fr 1fr 120px",
-                padding: "14px 20px",
+                padding: "14px 20px", minWidth: 600,
                 alignItems: "center",
                 borderBottom: `1px solid ${C.border}`,
                 transition: ".15s",
