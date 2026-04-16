@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AlertCircle, LogOut } from "lucide-react";
 import { LOGO, font, C } from "../constants";
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onShowOnboarding }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
@@ -45,6 +45,11 @@ export default function Login({ onLogin }) {
           <input type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••" onKeyDown={e => e.key === "Enter" && go()} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13.5, fontFamily: font, background: C.bg, marginBottom: 18 }} />
           {err && <div style={{ padding: "9px 12px", borderRadius: 8, background: C.redSoft, color: C.red, fontSize: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 5 }}><AlertCircle size={13} />{err}</div>}
           <button onClick={go} disabled={ld} style={{ width: "100%", padding: 12, borderRadius: 10, fontSize: 14, fontWeight: 600, background: `linear-gradient(135deg,${C.primary},${C.violet})`, color: "#fff", opacity: ld ? .7 : 1 }}>{ld ? "Accediendo..." : "Iniciar sesión"}</button>
+          {onShowOnboarding && (
+            <button onClick={() => onShowOnboarding()} style={{ width: "100%", padding: 10, marginTop: 10, borderRadius: 10, fontSize: 12, fontWeight: 500, background: "transparent", color: C.primary, border: "none", cursor: "pointer", fontFamily: font, textDecoration: "underline", textUnderlineOffset: 3 }}>
+              ¿No tienes cuenta? Crear despacho gratis
+            </button>
+          )}
           <div style={{ marginTop: 20, padding: 12, borderRadius: 10, background: C.bg, border: `1px dashed ${C.border}`, fontSize: 11, color: C.textMuted, lineHeight: 1.7 }}>
             <strong style={{ color: C.dark }}>Admin:</strong> carlos@libredeuda.com / admin1234<br />
             <strong style={{ color: C.dark }}>Letrado:</strong> ana@libredeuda.com / admin1234<br />

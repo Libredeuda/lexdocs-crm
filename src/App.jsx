@@ -1,14 +1,21 @@
 import { useState, useEffect } from "react";
 import Login from "./components/Login";
+import Onboarding from "./components/Onboarding";
 import ClientApp from "./client/ClientApp";
 import AdminApp from "./admin/AdminApp";
 import { supabase } from "./lib/supabase";
 import { DEMO } from "./constants";
+import { useTenant } from "./lib/TenantContext";
 
 export default function App() {
+  const tenant = useTenant();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [appError, setAppError] = useState(null);
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("onboarding") === "true";
+  });
 
   // On mount: check if there's an existing Supabase session
   useEffect(() => {
@@ -90,13 +97,18 @@ export default function App() {
     );
   }
 
-  if (!user) return <Login onLogin={handleLogin} />;
+  if (!user) {
+    if (showOnboarding) {
+      return <Onboarding onBack={() => setShowOnboarding(false)} />;
+    }
+    return <Login onLogin={handleLogin} onShowOnboarding={() => setShowOnboarding(true)} />;
+  }
 
   const role = user.role;
 
   if (role === 'admin' || role === 'owner' || role === 'lawyer' || role === 'staff') {
-    return <AdminApp user={user} onLogout={handleLogout} />;
+    return <AdminApp user={user} onLogout={handleLogout} tenant={tenant} />;
   }
 
-  return <ClientApp user={user} onLogout={handleLogout} />;
+  return <ClientApp user={user} onLogout={handleLogout} tenant={tenant} />;
 }
