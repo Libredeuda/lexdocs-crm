@@ -103,8 +103,9 @@ export default function Carlota({ user, currentModule = "general", currentContex
     setIsTyping(true);
 
     const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    const hasEdgeFunction = !!import.meta.env.VITE_SUPABASE_URL;
 
-    if (apiKey) {
+    if (apiKey || hasEdgeFunction) {
       // ═══ MODO REAL: Claude API ═══
       try {
         const systemPrompt = buildSystemPrompt(firstName, role, currentModule, currentContext);
@@ -114,24 +115,79 @@ export default function Carlota({ user, currentModule = "general", currentContex
           .concat([{ role: 'user', content: msg }])
           .map(m => ({ role: m.role, content: m.content }));
 
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1024,
-            system: systemPrompt,
-            messages: apiMessages,
-          }),
-        });
+        // Try Edge Function first, then direct API as fallback
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        let reply;
 
-        const data = await res.json();
-        const reply = data.content?.map(b => b.text || '').join('') || 'Disculpa, no he podido procesar tu pregunta. ¿Puedes reformularla?';
+        if (supabaseUrl && supabaseKey) {
+          try {
+            const res = await fetch(`${supabaseUrl}/functions/v1/carlota-chat`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                messages: apiMessages,
+                userRole: role,
+                currentModule,
+                firstName,
+                currentContext,
+              }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              reply = data.reply;
+            } else {
+              throw new Error(data.error || 'Edge function error');
+            }
+          } catch (edgeError) {
+            console.warn('Edge function failed, trying direct API:', edgeError.message);
+            // Fallback to direct API if edge function not deployed yet
+            if (apiKey) {
+              const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': apiKey,
+                  'anthropic-version': '2023-06-01',
+                  'anthropic-dangerous-direct-browser-access': 'true',
+                },
+                body: JSON.stringify({
+                  model: 'claude-sonnet-4-20250514',
+                  max_tokens: 1024,
+                  system: systemPrompt,
+                  messages: apiMessages,
+                }),
+              });
+              const data = await res.json();
+              reply = data.content?.map(b => b.text || '').join('');
+            }
+          }
+        }
+
+        if (!reply && apiKey) {
+          const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+              'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 1024,
+              system: systemPrompt,
+              messages: apiMessages,
+            }),
+          });
+          const data = await res.json();
+          reply = data.content?.map(b => b.text || '').join('');
+        }
+
+        if (!reply) reply = 'Disculpa, no he podido procesar tu pregunta. ¿Puedes reformularla?';
         setMessages(prev => [...prev, { role: 'assistant', content: reply + DISCLAIMER, timestamp: Date.now() }]);
       } catch (e) {
         console.error('Claude API error:', e);

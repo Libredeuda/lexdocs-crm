@@ -84,10 +84,42 @@ export default function BillingSettings() {
     ? Math.max(0, Math.ceil((new Date(tenant.trial_ends_at) - new Date()) / 86400000))
     : 0;
 
-  function handleUpgrade(planId) {
-    // In production: redirect to Stripe Checkout
-    // For now: update tenant plan in Supabase directly (test mode)
-    setToast(`Plan "${planId}" seleccionado. En produccion, se redirigira a Stripe Checkout.`);
+  async function handleUpgrade(planId) {
+    setToast("Redirigiendo a Stripe...");
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      // Try Edge Function
+      if (supabaseUrl) {
+        const res = await fetch(`${supabaseUrl}/functions/v1/stripe-checkout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            planId,
+            tenantId: tenant?.id,
+            tenantSlug: tenant?.slug,
+            email: '',
+            successUrl: window.location.origin + '?checkout=success&plan=' + planId,
+            cancelUrl: window.location.href,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.url) {
+          window.location.href = data.url;
+          return;
+        }
+      }
+
+      // Fallback: inform user
+      setToast(`Plan "${planId}" seleccionado. Configura la Edge Function stripe-checkout para activar pagos reales.`);
+    } catch (e) {
+      console.error('Checkout error:', e);
+      setToast("Error al crear la sesion de pago. Intentalo de nuevo.");
+    }
     setTimeout(() => setToast(null), 4000);
   }
 

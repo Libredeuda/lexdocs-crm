@@ -3,6 +3,7 @@ import { Upload, Camera, FileText, CheckCircle, Clock, AlertCircle, Calendar, Me
 import { LOGO, font, C, KB, DOCS_LSO, DOCS_CONCURSO, EVENTS_LSO, EVENTS_CONC, PAYMENTS, methodInfo } from "../constants";
 import { statusMap, getS, evSt, getEv, fmtD, fmtMoney, daysUntil, payStatusMap, getPayStatus, motivMsg } from "../utils";
 import Carlota from "../components/Carlota";
+import { supabase } from "../lib/supabase";
 
 // Verificación documental con Claude Vision (con backend proxy o modo demo)
 async function verifyDocWithAI(file, docId, clientName) {
@@ -59,18 +60,88 @@ export default function ClientApp({ user, onLogout }) {
   const [verifying, setVerifying] = useState(null);
   const [verifyResult, setVerifyResult] = useState(null);
 
+  const caseType = user.caseType || 'lso';
+  const caseId = user.caseId || 'N/A';
+  const lawyerName = user.lawyer || 'Sin asignar';
+  const fullName = user.full_name || user.name || '';
+
   useEffect(() => {
-    setDocs((user.caseType === "concurso" ? DOCS_CONCURSO : DOCS_LSO).map(d => ({ ...d })));
-    setEvents(user.caseType === "concurso" ? EVENTS_CONC : EVENTS_LSO);
-    const n = user.name.split(" ")[0];
-    setChatMsgs([{ role: "assistant", content: `¡Hola ${n}! 👋 Soy tu asistente documental de LibreApp.\n\nPuedo ayudarte con:\n• Qué documentos necesitas y dónde conseguirlos\n• Estado de tu expediente ${user.caseId}\n• Plazos y fechas\n\n¿En qué puedo ayudarte?` }]);
+    async function loadData() {
+      if (user.org_id) {
+        try {
+          const { data: cases } = await supabase
+            .from('cases')
+            .select('*')
+            .eq('org_id', user.org_id)
+            .limit(1);
+
+          const currentCase = cases?.[0];
+
+          if (currentCase) {
+            const { data: docTypes } = await supabase
+              .from('document_types')
+              .select('*')
+              .eq('org_id', user.org_id)
+              .eq('case_type', currentCase.case_type)
+              .order('cat_num', { ascending: true });
+
+            if (docTypes?.length > 0) {
+              setDocs(docTypes.map(d => ({
+                id: d.id,
+                name: d.name,
+                cat: d.category,
+                catNum: d.cat_num,
+                status: 'pending',
+                required: d.required,
+              })));
+            } else {
+              setDocs((currentCase.case_type === "concurso" ? DOCS_CONCURSO : DOCS_LSO).map(d => ({ ...d })));
+            }
+
+            const { data: eventsData } = await supabase
+              .from('events')
+              .select('*')
+              .eq('case_id', currentCase.id)
+              .order('event_date', { ascending: true });
+
+            if (eventsData?.length > 0) {
+              setEvents(eventsData.map(e => ({
+                id: e.id,
+                title: e.title,
+                date: e.event_date,
+                time: e.event_time,
+                type: e.event_type,
+                desc: e.description,
+              })));
+            } else {
+              setEvents(currentCase.case_type === "concurso" ? EVENTS_CONC : EVENTS_LSO);
+            }
+          } else {
+            setDocs(DOCS_LSO.map(d => ({ ...d })));
+            setEvents(EVENTS_LSO);
+          }
+        } catch (e) {
+          console.error('Error loading client data:', e);
+          setDocs((caseType === "concurso" ? DOCS_CONCURSO : DOCS_LSO).map(d => ({ ...d })));
+          setEvents(caseType === "concurso" ? EVENTS_CONC : EVENTS_LSO);
+        }
+      } else {
+        setDocs((caseType === "concurso" ? DOCS_CONCURSO : DOCS_LSO).map(d => ({ ...d })));
+        setEvents(caseType === "concurso" ? EVENTS_CONC : EVENTS_LSO);
+      }
+
+      const n = fullName.split(" ")[0];
+      setChatMsgs([{ role: "assistant", content: `¡Hola ${n}! 👋 Soy tu asistente documental de LibreApp.\n\nPuedo ayudarte con:\n• Qué documentos necesitas y dónde conseguirlos\n• Estado de tu expediente ${caseId}\n• Plazos y fechas\n\n¿En qué puedo ayudarte?` }]);
+    }
+
+    loadData();
   }, [user]);
 
   const up = docs.filter(d => d.status === "uploaded" || d.status === "review").length;
   const pct = docs.length ? Math.round(up / docs.length * 100) : 0;
   const cats = [...new Set(docs.map(d => d.cat))];
   const pendingReq = docs.filter(d => d.status === "pending" && d.required).length;
-  const firstName = user?.name?.split(" ")[0] || "";
+  const firstName = fullName.split(" ")[0] || "";
 
   async function handleFileSelected(docId, file) {
     setVerifying({ docId, fileName: file.name, file });
@@ -94,14 +165,14 @@ export default function ClientApp({ user, onLogout }) {
   }
 
   const navItems = [{ id: "dashboard", label: "Inicio", icon: Home }, { id: "documents", label: "Documentos", icon: FolderOpen, badge: pendingReq }, { id: "timeline", label: "Mi expediente", icon: BarChart3 }, { id: "calendar", label: "Agenda", icon: Calendar }, { id: "payments", label: "Pagos", icon: Wallet }, { id: "chat", label: "Asistente IA", icon: MessageSquare }];
-  const caseLabel = user.caseType === "concurso" ? "Concurso de Acreedores" : "Ley de Segunda Oportunidad";
+  const caseLabel = caseType === "concurso" ? "Concurso de Acreedores" : "Ley de Segunda Oportunidad";
 
   return (
     <div style={{ fontFamily: font, background: C.bg, minHeight: "100vh", display: "flex", color: C.text }}>
       <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       <style>{`*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes scaleIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:calc(200px + 100%) 0}}.fade-in{animation:fadeIn .35s ease both}.scale-in{animation:scaleIn .3s ease both}.hover-lift{transition:transform .2s,box-shadow .2s}.hover-lift:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(91,107,240,.12)}input:focus,textarea:focus{outline:none;border-color:${C.primary}!important;box-shadow:0 0 0 3px rgba(91,107,240,.15)}button{cursor:pointer;border:none;font-family:${font}}@media(max-width:768px){.dsk{display:none!important}.mh{display:flex!important}.mc{margin-left:0!important;padding:14px!important;padding-top:68px!important}}@media(min-width:769px){.mh{display:none!important}.mo{display:none!important}}`}</style>
 
-      <div style={{ position: "fixed", top: 0, right: 0, zIndex: 9999, padding: "4px 12px", background: `linear-gradient(135deg,#5B6BF0,#7C5BF0)`, color: "#fff", fontSize: 10, fontWeight: 600, borderRadius: "0 0 0 8px", letterSpacing: ".05em" }}>MODO DEMO · IA simulada</div>
+      {!user.org_id && <div style={{ position: "fixed", top: 0, right: 0, zIndex: 9999, padding: "4px 12px", background: `linear-gradient(135deg,#5B6BF0,#7C5BF0)`, color: "#fff", fontSize: 10, fontWeight: 600, borderRadius: "0 0 0 8px", letterSpacing: ".05em" }}>MODO DEMO · IA simulada</div>}
       {toast && <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.sidebar, color: "#fff", padding: "12px 24px", borderRadius: 12, fontSize: 13, fontWeight: 500, zIndex: 999, animation: "slideUp .3s ease", boxShadow: "0 8px 30px rgba(0,0,0,.2)", maxWidth: "90%", textAlign: "center" }}>{toast}</div>}
 
       {verifying && <VerificationModal verifying={verifying} result={verifyResult} firstName={firstName} onConfirm={confirmUpload} onReject={rejectUpload} expectedDoc={docs.find(d => d.id === verifying.docId)} />}
@@ -113,7 +184,7 @@ export default function ClientApp({ user, onLogout }) {
             <div><span style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>LibreApp</span><p style={{ fontSize: 9.5, color: C.textLight }}>Suite Legal</p></div>
           </div>
           <div style={{ padding: "8px 10px", background: C.sidebarLight, borderRadius: 8, borderLeft: `3px solid ${C.primary}` }}>
-            <p style={{ fontSize: 10.5, color: C.primaryLight, fontWeight: 600 }}>Exp. {user.caseId}</p>
+            <p style={{ fontSize: 10.5, color: C.primaryLight, fontWeight: 600 }}>Exp. {caseId}</p>
             <p style={{ fontSize: 9.5, color: C.textLight, marginTop: 1 }}>{caseLabel}</p>
           </div>
         </div>
@@ -127,8 +198,8 @@ export default function ClientApp({ user, onLogout }) {
         </nav>
         <div style={{ padding: "14px 14px 18px", borderTop: `1px solid ${C.sidebarMid}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.sidebarLight, display: "flex", alignItems: "center", justifyContent: "center" }}>{user.caseType === "concurso" ? <Building2 size={15} color={C.primaryLight} /> : <User size={15} color={C.primaryLight} />}</div>
-            <div><p style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{user.name.length > 20 ? user.name.substring(0, 20) + "…" : user.name}</p><p style={{ fontSize: 9.5, color: C.textLight }}>Letrado: {user.lawyer}</p></div>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.sidebarLight, display: "flex", alignItems: "center", justifyContent: "center" }}>{caseType === "concurso" ? <Building2 size={15} color={C.primaryLight} /> : <User size={15} color={C.primaryLight} />}</div>
+            <div><p style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{fullName.length > 20 ? fullName.substring(0, 20) + "…" : fullName}</p><p style={{ fontSize: 9.5, color: C.textLight }}>Letrado: {lawyerName}</p></div>
           </div>
           <button onClick={onLogout} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 7, borderRadius: 7, background: "rgba(255,255,255,.05)", color: "rgba(255,255,255,.4)", fontSize: 11 }}><LogOut size={12} /> Cerrar sesión</button>
         </div>
@@ -144,7 +215,7 @@ export default function ClientApp({ user, onLogout }) {
       <main className="mc" style={{ marginLeft: 260, flex: 1, padding: "24px 30px", minHeight: "100vh" }}>
         <div style={{ marginBottom: 22 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em" }}>{page === "dashboard" && `Hola, ${firstName}`}{page === "documents" && "Gestión documental"}{page === "timeline" && "Mi expediente"}{page === "calendar" && "Agenda"}{page === "payments" && "Mis pagos"}{page === "chat" && "Asistente documental"}</h1>
-          <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{caseLabel} · Exp. {user.caseId}</p>
+          <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{caseLabel} · Exp. {caseId}</p>
         </div>
 
         {page === "dashboard" && <div style={{ background: `linear-gradient(135deg,${C.primary},${C.violet})`, borderRadius: 14, padding: "20px 24px", marginBottom: 20, color: "#fff", position: "relative", overflow: "hidden" }}>
@@ -167,7 +238,7 @@ export default function ClientApp({ user, onLogout }) {
         </div>
       </main>
       {showScan && <Scanner docId={scanId} docs={docs} onCapture={(id, file) => { handleFileSelected(id, file); setShowScan(false); }} onClose={() => setShowScan(false)} />}
-      <Carlota user={user} currentModule="lexdocs" currentContext={{ caseId: user.caseId }} />
+      <Carlota user={user} currentModule="lexdocs" currentContext={{ caseId: caseId }} />
     </div>
   );
 }
@@ -327,7 +398,7 @@ function Dashboard({docs,pct,setPage,events,cats,user,pendingReq,firstName}){
       </div>
     </div>
           {/* Payment widget */}
-      {(()=>{const pd=PAYMENTS[user.caseType];if(!pd)return null;const paid=pd.payments.filter(p=>p.status==="paid");const totalPaid=paid.reduce((a,p)=>a+p.amount,0);const upc=pd.payments.find(p=>p.status==="upcoming");const days=upc?daysUntil(upc.date):null;const payPct=Math.round(totalPaid/pd.totalContracted*100);return(
+      {(()=>{const pd=PAYMENTS[user.caseType||'lso'];if(!pd)return null;const paid=pd.payments.filter(p=>p.status==="paid");const totalPaid=paid.reduce((a,p)=>a+p.amount,0);const upc=pd.payments.find(p=>p.status==="upcoming");const days=upc?daysUntil(upc.date):null;const payPct=Math.round(totalPaid/pd.totalContracted*100);return(
         <div onClick={()=>setPage("payments")} className="hover-lift" style={{cursor:"pointer",background:C.card,borderRadius:14,padding:"18px",border:`1px solid ${C.border}`,marginTop:14,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
           <div style={{width:42,height:42,borderRadius:10,background:`linear-gradient(135deg,${C.primary}15,${C.violet}10)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Wallet size={20} color={C.primary}/></div>
           <div style={{flex:1,minWidth:180}}>
@@ -442,8 +513,8 @@ function Scanner({docId,docs,onCapture,onClose}){
 function Timeline({docs,cats,pct,user,caseLabel}){
   return(<div>
     <div style={{background:C.card,borderRadius:14,padding:"20px",border:`1px solid ${C.border}`,marginBottom:18,display:"flex",gap:18,flexWrap:"wrap"}}>
-      <div style={{flex:1,minWidth:160}}><p style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:".04em"}}>Expediente</p><p style={{fontSize:14,fontWeight:600}}>Exp. {user.caseId}</p><p style={{fontSize:11,color:C.textMuted,marginTop:2}}>{caseLabel}</p></div>
-      <div style={{flex:1,minWidth:160}}><p style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:".04em"}}>Letrado</p><p style={{fontSize:14,fontWeight:600}}>{user.lawyer}</p></div>
+      <div style={{flex:1,minWidth:160}}><p style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:".04em"}}>Expediente</p><p style={{fontSize:14,fontWeight:600}}>Exp. {user.caseId || 'N/A'}</p><p style={{fontSize:11,color:C.textMuted,marginTop:2}}>{caseLabel}</p></div>
+      <div style={{flex:1,minWidth:160}}><p style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:".04em"}}>Letrado</p><p style={{fontSize:14,fontWeight:600}}>{user.lawyer || 'Sin asignar'}</p></div>
       <div style={{flex:1,minWidth:160}}><p style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:".04em"}}>Estado</p><span style={{display:"inline-block",padding:"4px 10px",borderRadius:6,background:`rgba(91,107,240,.08)`,color:C.primary,fontSize:11,fontWeight:600}}>Fase documental — {pct}%</span></div>
     </div>
     <div style={{background:C.card,borderRadius:14,padding:"22px",border:`1px solid ${C.border}`}}>
@@ -484,7 +555,7 @@ function Cal({events}){
 
 // ════ PAYMENTS PAGE ════
 function Payments({user, firstName}){
-  const data = PAYMENTS[user.caseType];
+  const data = PAYMENTS[user.caseType || 'lso'];
   if(!data) return <div>No hay datos de pagos</div>;
 
   const paid = data.payments.filter(p=>p.status==="paid");
@@ -628,18 +699,18 @@ function Payments({user, firstName}){
 function Chat({messages,setMessages,docs,user,caseLabel}){
   const[input,setInput]=useState("");const[ld,setLd]=useState(false);const endRef=useRef(null);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[messages]);
-  const payData = PAYMENTS[user.caseType];
+  const payData = PAYMENTS[user.caseType || 'lso'];
   const payCtx = payData ? `\nPAGOS:\nTotal contratado: ${fmtMoney(payData.totalContracted)}, Pagados: ${payData.payments.filter(p=>p.status==="paid").length}/${payData.payments.length}, Método: ${methodInfo[payData.method].label}, Próximo pago: ${(()=>{const u=payData.payments.find(p=>p.status==="upcoming");return u?`${fmtMoney(u.amount)} el ${u.date}`:"ninguno"})()}`:"";
   const docCtx=docs.map(d=>`- [${d.status==="pending"?"PENDIENTE":d.status==="uploaded"?"VERIFICADO":"EN REVISIÓN"}] ${d.name} (${d.cat})${d.warn?` ⚠ ${d.warn}`:""}${!d.required?" [opcional]":""}`).join("\n");
   async function send(){
     if(!input.trim()||ld)return;const msg=input.trim();setInput("");setMessages(p=>[...p,{role:"user",content:msg}]);setLd(true);
-    try{const sys=`Eres el asistente documental de LibreApp. Cliente: ${user.name} | Exp: ${user.caseId} | Procedimiento: ${caseLabel} | Letrado: ${user.lawyer}\nDOCUMENTACIÓN:\n${docCtx}\nAyuda con documentos, sedes electrónicas (AEAT, TGSS, CIRBE, empadronamiento, antecedentes penales). Español de España, cercano, tutea, mensajes concisos.`;
+    try{const sys=`Eres el asistente documental de LibreApp. Cliente: ${user.full_name || user.name || ''} | Exp: ${user.caseId || 'N/A'} | Procedimiento: ${caseLabel} | Letrado: ${user.lawyer || 'Sin asignar'}\nDOCUMENTACIÓN:\n${docCtx}${payCtx}\nAyuda con documentos, sedes electrónicas (AEAT, TGSS, CIRBE, empadronamiento, antecedentes penales). Español de España, cercano, tutea, mensajes concisos.`;
       const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[...messages.slice(-10),{role:"user",content:msg}].map(m=>({role:m.role,content:m.content}))})});
       const data=await res.json();const reply=data.content?.map(b=>b.text||"").join("")||"Error, ¿puedes repetir?";
       setMessages(p=>[...p,{role:"assistant",content:reply}]);
     }catch{setMessages(p=>[...p,{role:"assistant",content:"Error de conexión."}]);}setLd(false);}
 
-  const qQ=user.caseType==="concurso"?["¿Qué me falta?","¿Cómo consigo el CIRBE?","¿Formato Lexnet?","¿Plazo?"]:["¿Qué me falta?","¿Dónde saco empadronamiento?","¿Antecedentes penales?","¿Mi próximo plazo?"];
+  const qQ=(user.caseType||'lso')==="concurso"?["¿Qué me falta?","¿Cómo consigo el CIRBE?","¿Formato Lexnet?","¿Plazo?"]:["¿Qué me falta?","¿Dónde saco empadronamiento?","¿Antecedentes penales?","¿Mi próximo plazo?"];
 
   return(<div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)",background:C.card,borderRadius:14,border:`1px solid ${C.border}`,overflow:"hidden"}}>
     <div style={{padding:"12px 18px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:9}}>

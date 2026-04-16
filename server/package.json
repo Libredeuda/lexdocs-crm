@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "sync:boe": "node src/workers/boe-sync.js",
+    "sync:cendoj": "node src/workers/cendoj-sync.js",
+    "sync:all": "node src/workers/run-sync.js"
   },
   "dependencies": {
     "express": "^4.21.0",
