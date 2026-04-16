@@ -102,16 +102,103 @@ export default function Carlota({ user, currentModule = "general", currentContex
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
-    // Demo mode: simulate delay then respond
-    const delay = 800 + Math.random() * 1200;
-    await new Promise((r) => setTimeout(r, delay));
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
-    const reply = matchDemoResponse(msg, firstName);
-    setMessages((prev) => [
-      ...prev,
-      { role: "assistant", content: reply, timestamp: Date.now() },
-    ]);
+    if (apiKey) {
+      // ═══ MODO REAL: Claude API ═══
+      try {
+        const systemPrompt = buildSystemPrompt(firstName, role, currentModule, currentContext);
+        const apiMessages = messages
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .slice(-10)
+          .concat([{ role: 'user', content: msg }])
+          .map(m => ({ role: m.role, content: m.content }));
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1024,
+            system: systemPrompt,
+            messages: apiMessages,
+          }),
+        });
+
+        const data = await res.json();
+        const reply = data.content?.map(b => b.text || '').join('') || 'Disculpa, no he podido procesar tu pregunta. ¿Puedes reformularla?';
+        setMessages(prev => [...prev, { role: 'assistant', content: reply + DISCLAIMER, timestamp: Date.now() }]);
+      } catch (e) {
+        console.error('Claude API error:', e);
+        // Fallback to demo
+        const reply = matchDemoResponse(msg, firstName);
+        setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
+      }
+    } else {
+      // ═══ MODO DEMO ═══
+      const delay = 800 + Math.random() * 1200;
+      await new Promise((r) => setTimeout(r, delay));
+      const reply = matchDemoResponse(msg, firstName);
+      setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
+    }
+
     setIsTyping(false);
+  }
+
+  function buildSystemPrompt(name, userRole, module, context) {
+    const base = `Eres Carlota, la asistente legal de LibreApp, una plataforma SaaS para despachos de abogados especializados en Ley de Segunda Oportunidad y Concurso de Acreedores en España.
+
+PERSONALIDAD:
+- Profesional pero cercana, tuteas al usuario
+- Especializada en derecho concursal español y LSO
+- Citas fuentes siempre que puedas (sentencia, artículo, ley)
+- NUNCA inventas jurisprudencia ni sentencias
+- Respondes en español de España
+- Mensajes concisos y útiles
+
+LEGISLACIÓN CLAVE QUE CONOCES:
+- TRLC (Real Decreto Legislativo 1/2020): Texto Refundido de la Ley Concursal
+- Ley 16/2022: Reforma del TRLC, transpone Directiva UE 2019/1023
+- Arts. 486-502 TRLC: Régimen del BEPI (Beneficio de Exoneración del Pasivo Insatisfecho)
+- Art. 178 bis LC (antiguo): BEPI original
+- RDL 1/2015: Primera regulación de segunda oportunidad en España
+
+JURISPRUDENCIA CLAVE:
+- STS 381/2019: Criterios de buena fe para BEPI
+- STS 56/2020: Extensión BEPI a crédito público (AEAT, TGSS)
+- STS 232/2022: Plan de pagos en concurso consecutivo
+- STS 589/2023: BEPI y deuda hipotecaria
+- STJUE C-869/19: Plazos de exoneración (Directiva insolvencia)
+
+DOCUMENTACIÓN LSO (30 documentos en 7 categorías):
+1. Datos personales: DNI/NIE, libro familia, empadronamiento, antecedentes penales
+2. Situación laboral: 3 últimas nóminas, IRPF 4 años
+3. Situación bancaria: Extractos 12 meses, contratos préstamos
+4. Deudas: Certificados AEAT, TGSS, listado acreedores
+5. Inventario bienes: Escrituras, IBI, vehículos
+6. Gastos e ingresos mensuales
+7. Contratos vigentes`;
+
+    const roleContext = {
+      client: `\n\nCONTEXTO: Estás hablando con ${name}, un CLIENTE del despacho. Usa lenguaje sencillo, sé motivadora, explica los conceptos legales de forma simple. No uses jerga legal sin explicarla.`,
+      lawyer: `\n\nCONTEXTO: Estás hablando con ${name}, un LETRADO del despacho. Sé técnica y eficiente. Puedes usar terminología jurídica. Cita sentencias con formato STS sala/nº/fecha.`,
+      admin: `\n\nCONTEXTO: Estás hablando con ${name}, ADMINISTRADOR del despacho. Puedes ayudar con KPIs, análisis de pipeline, y cuestiones de gestión además de temas legales.`,
+      staff: `\n\nCONTEXTO: Estás hablando con ${name}, personal del despacho. Ayuda con cuestiones documentales y procedimentales.`,
+    };
+
+    const moduleContext = {
+      lexdocs: '\n\nMÓDULO ACTIVO: LexDocs (portal documental del cliente). Enfócate en ayudar con documentación, qué falta, dónde conseguir cada documento, plazos.',
+      lexcrm: '\n\nMÓDULO ACTIVO: LexCRM (gestión del despacho). Puedes ayudar con gestión de contactos, expedientes, pipeline de ventas.',
+      lexconsulta: '\n\nMÓDULO ACTIVO: LexConsulta (búsqueda jurídica). Enfócate en jurisprudencia, legislación, análisis de sentencias.',
+      general: '',
+    };
+
+    return base + (roleContext[userRole] || roleContext.client) + (moduleContext[module] || '');
   }
 
   function handleKeyDown(e) {
