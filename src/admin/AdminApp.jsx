@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch } from "lucide-react";
+import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale } from "lucide-react";
 import { LOGO, font, C } from "../constants";
 import { supabase } from '../lib/supabase';
 import Carlota from "../components/Carlota";
@@ -12,6 +12,7 @@ import OrgSettings from "./settings/OrgSettings";
 import TeamMembers from "./settings/TeamMembers";
 import ApiKeys from "./settings/ApiKeys";
 import PipelineSettings from "./settings/PipelineSettings";
+import SearchView from "./lexconsulta/SearchView";
 
 export default function AdminApp({ user, onLogout }) {
   const [page, setPage] = useState("dashboard");
@@ -70,6 +71,7 @@ export default function AdminApp({ user, onLogout }) {
     { id: "cases", label: "Expedientes", icon: FolderKanban },
     { id: "contacts", label: "Contactos", icon: Users },
     { id: "pipeline", label: "Pipeline", icon: Kanban },
+    { id: "lexconsulta", label: "LexConsulta", icon: Scale },
   ];
 
   const settingsItem = { id: "settings", label: "Configuracion", icon: Settings };
@@ -86,6 +88,7 @@ export default function AdminApp({ user, onLogout }) {
     cases: "Expedientes",
     contacts: "Contactos",
     pipeline: "Pipeline",
+    lexconsulta: "LexConsulta",
     settings: "Configuracion",
     "contact-detail": "Detalle de contacto",
   };
@@ -254,6 +257,7 @@ export default function AdminApp({ user, onLogout }) {
           {page === "cases" && <AdminCaseList cases={cases} />}
           {page === "contacts" && <ContactList setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "pipeline" && <ContactPipeline setPage={setPage} setSelectedContact={setSelectedContact} />}
+          {page === "lexconsulta" && <SearchView />}
           {page === "contact-detail" && selectedContact && (
             <ContactDetail
               contact={selectedContact}
