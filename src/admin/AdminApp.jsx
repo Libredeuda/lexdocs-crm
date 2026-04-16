@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale } from "lucide-react";
+import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard } from "lucide-react";
 import { LOGO, font, C } from "../constants";
 import { supabase } from '../lib/supabase';
 import Carlota from "../components/Carlota";
@@ -12,6 +12,7 @@ import OrgSettings from "./settings/OrgSettings";
 import TeamMembers from "./settings/TeamMembers";
 import ApiKeys from "./settings/ApiKeys";
 import PipelineSettings from "./settings/PipelineSettings";
+import BillingSettings from "./settings/BillingSettings";
 import SearchView from "./lexconsulta/SearchView";
 
 export default function AdminApp({ user, onLogout }) {
@@ -81,6 +82,7 @@ export default function AdminApp({ user, onLogout }) {
     { id: "team", label: "Equipo", icon: UserCog },
     { id: "apikeys", label: "API Keys", icon: Code },
     { id: "pipeline-cfg", label: "Pipeline", icon: GitBranch },
+    { id: "billing", label: "Facturacion", icon: CreditCard },
   ];
 
   const pageTitle = {
@@ -269,6 +271,7 @@ export default function AdminApp({ user, onLogout }) {
           {page === "settings" && settingsTab === "team" && <TeamMembers />}
           {page === "settings" && settingsTab === "apikeys" && <ApiKeys />}
           {page === "settings" && settingsTab === "pipeline-cfg" && <PipelineSettings />}
+          {page === "settings" && settingsTab === "billing" && <BillingSettings />}
         </div>
       </main>
       <Carlota
