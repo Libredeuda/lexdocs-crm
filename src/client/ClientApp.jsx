@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Upload, Camera, FileText, CheckCircle, Clock, AlertCircle, Calendar, MessageSquare, Home, LogOut, ChevronRight, X, Bell, User, Send, Paperclip, ScanLine, Eye, BarChart3, Phone, FolderOpen, Shield, Scale, Briefcase, Menu, ChevronDown, Building2, FileWarning, ChevronUp, Check, RotateCw, Sparkles, ShieldCheck, ShieldAlert, Loader, RefreshCw, CreditCard, Wallet, Receipt, Copy, Download, ArrowRightCircle, Banknote, TrendingUp } from "lucide-react";
 import { LOGO, font, C, KB, DOCS_LSO, DOCS_CONCURSO, EVENTS_LSO, EVENTS_CONC, PAYMENTS, methodInfo } from "../constants";
 import { statusMap, getS, evSt, getEv, fmtD, fmtMoney, daysUntil, payStatusMap, getPayStatus, motivMsg } from "../utils";
+import Carlota from "../components/Carlota";
 
 // Verificación documental con Claude Vision (con backend proxy o modo demo)
 async function verifyDocWithAI(file, docId, clientName) {
@@ -166,6 +167,7 @@ export default function ClientApp({ user, onLogout }) {
         </div>
       </main>
       {showScan && <Scanner docId={scanId} docs={docs} onCapture={(id, file) => { handleFileSelected(id, file); setShowScan(false); }} onClose={() => setShowScan(false)} />}
+      <Carlota user={user} currentModule="lexdocs" currentContext={{ caseId: user.caseId }} />
     </div>
   );
 }

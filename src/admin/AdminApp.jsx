@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch } from "lucide-react";
 import { LOGO, font, C } from "../constants";
 import { supabase } from '../lib/supabase';
+import Carlota from "../components/Carlota";
 import AdminDashboard from "./AdminDashboard";
 import AdminCaseList from "./AdminCaseList";
 import ContactList from "./contacts/ContactList";
@@ -266,6 +267,11 @@ export default function AdminApp({ user, onLogout }) {
           {page === "settings" && settingsTab === "pipeline-cfg" && <PipelineSettings />}
         </div>
       </main>
+      <Carlota
+        user={user}
+        currentModule={page === "contacts" || page === "pipeline" || page === "contact-detail" ? "lexcrm" : "general"}
+        currentContext={{}}
+      />
     </div>
   );
 }
