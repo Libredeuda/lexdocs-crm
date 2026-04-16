@@ -29,8 +29,8 @@ export default function Login({ onLogin }) {
       <div className="login-hero" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: 50, maxWidth: 520 }}>
         <div style={{ animation: "fadeIn .6s ease both" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 36 }}>
-            <img src={LOGO} alt="LibreDeuda" style={{ width: 48, height: 48, borderRadius: 12 }} />
-            <div><span style={{ fontSize: 26, fontWeight: 700, color: "#fff" }}>LibreDeuda</span><p style={{ fontSize: 11, color: C.textLight }}>Abogados</p></div>
+            <img src={LOGO} alt="LibreApp" style={{ width: 48, height: 48, borderRadius: 12 }} />
+            <div><span style={{ fontSize: 26, fontWeight: 700, color: "#fff" }}>LibreApp</span><p style={{ fontSize: 11, color: C.textLight }}>Suite Legal</p></div>
           </div>
           <h1 style={{ fontSize: 34, fontWeight: 700, color: "#fff", lineHeight: 1.2, marginBottom: 14 }}>Tu expediente,<br /><span style={{ background: `linear-gradient(90deg,${C.primary},${C.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>verificado por IA</span></h1>
           <p style={{ fontSize: 15, color: "rgba(255,255,255,.4)", lineHeight: 1.7, maxWidth: 380 }}>Sube cada documento y la IA lo verifica al instante. Si algo está mal, te decimos qué hacer.</p>

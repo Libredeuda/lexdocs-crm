@@ -5,8 +5,8 @@ import { C } from "../../constants";
 const font = "'Poppins', sans-serif";
 
 export default function OrgSettings() {
-  const [orgName, setOrgName] = useState("LibreDeuda Abogados");
-  const [slug] = useState("libredeuda");
+  const [orgName, setOrgName] = useState("LibreApp");
+  const [slug] = useState("libreapp");
   const [primaryColor, setPrimaryColor] = useState("#5B6BF0");
   const [toast, setToast] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -17,7 +17,7 @@ export default function OrgSettings() {
   };
 
   const copySlug = () => {
-    navigator.clipboard.writeText(`https://app.lexdocs.com/${slug}`).catch(() => {});
+    navigator.clipboard.writeText(`https://app.libreapp.com/${slug}`).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
@@ -101,7 +101,7 @@ export default function OrgSettings() {
               border: `1px solid ${C.border}`, overflow: "hidden",
             }}>
               <span style={{ padding: "10px 0 10px 14px", fontSize: 12, color: C.textMuted, whiteSpace: "nowrap" }}>
-                app.lexdocs.com/
+                app.libreapp.com/
               </span>
               <input
                 style={{ ...input, border: "none", background: "transparent", padding: "10px 14px 10px 0" }}

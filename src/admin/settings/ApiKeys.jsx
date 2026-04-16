@@ -509,7 +509,7 @@ function ApiKeysTab({ copiedId, onCopy, showToast }) {
         <div>
           <p style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>Gestion de API Keys</p>
           <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
-            Crea claves para conectar LexDocs con herramientas externas (WhatsApp, Stripe, tu web, Zapier, Make, etc.).
+            Crea claves para conectar LibreApp con herramientas externas (WhatsApp, Stripe, tu web, Zapier, Make, etc.).
             Cada clave se muestra una sola vez al crearla. Guarda la clave en un lugar seguro.
           </p>
         </div>
@@ -737,7 +737,7 @@ function ApiDocsTab({ copiedId, onCopy }) {
           </span>
         </div>
         <p style={{ fontSize: 13, color: "rgba(255,255,255,.6)", lineHeight: 1.6, margin: 0 }}>
-          LexDocs expone una API REST completa a traves de Supabase (PostgREST). Todas las tablas
+          LibreApp expone una API REST completa a traves de Supabase (PostgREST). Todas las tablas
           son accesibles con autenticacion por API key. Base URL:
         </p>
         <div style={{
@@ -814,7 +814,7 @@ function WebhooksTab({ copiedId, onCopy }) {
         Webhooks y Formularios Web
       </p>
       <p style={s.sectionSub}>
-        Conecta tu web, Zapier, Make o Meta Ads para enviar leads directamente a LexDocs.
+        Conecta tu web, Zapier, Make o Meta Ads para enviar leads directamente a LibreApp.
         Cada lead se crea como contacto con estado "lead" en tu pipeline.
       </p>
 
@@ -841,7 +841,7 @@ function WebhooksTab({ copiedId, onCopy }) {
           <p style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 2 }}>Como funciona</p>
           <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
             Cuando un usuario rellena el formulario en tu web, se crea automaticamente un contacto
-            en LexDocs con estado "lead" y source "website". Aparecera en tu pipeline al instante.
+            en LibreApp con estado "lead" y source "website". Aparecera en tu pipeline al instante.
           </p>
         </div>
 
@@ -932,7 +932,7 @@ function WebhooksTab({ copiedId, onCopy }) {
 
         <div style={{ margin: "16px 0" }}>
           <p style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.7, marginBottom: 16 }}>
-            Conecta tus formularios de captacion de Meta Ads para que cada lead entre automaticamente en LexDocs:
+            Conecta tus formularios de captacion de Meta Ads para que cada lead entre automaticamente en LibreApp:
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -955,7 +955,7 @@ function WebhooksTab({ copiedId, onCopy }) {
               {
                 step: "4",
                 title: "Activar y probar",
-                desc: "Prueba el Zap con un lead de prueba desde Meta. El contacto aparecera en tu pipeline de LexDocs en segundos.",
+                desc: "Prueba el Zap con un lead de prueba desde Meta. El contacto aparecera en tu pipeline de LibreApp en segundos.",
               },
             ].map(item => (
               <div key={item.step} style={{

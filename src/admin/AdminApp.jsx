@@ -126,9 +126,9 @@ export default function AdminApp({ user, onLogout }) {
       <aside className="dsk" style={{ width: 260, background: C.sidebar, position: "fixed", top: 0, left: 0, bottom: 0, display: "flex", flexDirection: "column", zIndex: 50 }}>
         <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.sidebarMid}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <img src={LOGO} alt="LibreDeuda" style={{ width: 34, height: 34, borderRadius: 8 }} />
+            <img src={LOGO} alt="LibreApp" style={{ width: 34, height: 34, borderRadius: 8 }} />
             <div>
-              <span style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>LibreDeuda</span>
+              <span style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>LibreApp</span>
               <p style={{ fontSize: 9.5, color: C.primaryLight, fontWeight: 600 }}>Admin</p>
             </div>
           </div>
@@ -212,7 +212,7 @@ export default function AdminApp({ user, onLogout }) {
       {/* Main content */}
       <main className="mc" style={{ marginLeft: 260, flex: 1, padding: "24px 30px", minHeight: "100vh" }}>
         <div style={{ marginBottom: 22 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em" }}>{pageTitle[page] || "LexDocs"}</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em" }}>{pageTitle[page] || "LibreApp"}</h1>
           <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>Panel de administracion · {casesLoading ? '...' : cases.length} expedientes</p>
         </div>
 

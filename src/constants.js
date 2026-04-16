@@ -84,7 +84,7 @@ const PAYMENTS = {
     totalContracted: 8500,
     method: "transfer",
     iban: "ES81 0049 1500 0512 1023 4567",
-    beneficiary: "LibreDeuda Abogados S.L.",
+    beneficiary: "LibreApp S.L.",
     bank: "BBVA",
     paymentConcept: "Exp. 0892b-2025",
     payments: [

@@ -62,7 +62,7 @@ export default function ClientApp({ user, onLogout }) {
     setDocs((user.caseType === "concurso" ? DOCS_CONCURSO : DOCS_LSO).map(d => ({ ...d })));
     setEvents(user.caseType === "concurso" ? EVENTS_CONC : EVENTS_LSO);
     const n = user.name.split(" ")[0];
-    setChatMsgs([{ role: "assistant", content: `¡Hola ${n}! 👋 Soy tu asistente documental de LibreDeuda.\n\nPuedo ayudarte con:\n• Qué documentos necesitas y dónde conseguirlos\n• Estado de tu expediente ${user.caseId}\n• Plazos y fechas\n\n¿En qué puedo ayudarte?` }]);
+    setChatMsgs([{ role: "assistant", content: `¡Hola ${n}! 👋 Soy tu asistente documental de LibreApp.\n\nPuedo ayudarte con:\n• Qué documentos necesitas y dónde conseguirlos\n• Estado de tu expediente ${user.caseId}\n• Plazos y fechas\n\n¿En qué puedo ayudarte?` }]);
   }, [user]);
 
   const up = docs.filter(d => d.status === "uploaded" || d.status === "review").length;
@@ -108,8 +108,8 @@ export default function ClientApp({ user, onLogout }) {
       <aside className="dsk" style={{ width: 260, background: C.sidebar, position: "fixed", top: 0, left: 0, bottom: 0, display: "flex", flexDirection: "column", zIndex: 50 }}>
         <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.sidebarMid}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <img src={LOGO} alt="LibreDeuda" style={{ width: 34, height: 34, borderRadius: 8 }} />
-            <div><span style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>LibreDeuda</span><p style={{ fontSize: 9.5, color: C.textLight }}>Abogados</p></div>
+            <img src={LOGO} alt="LibreApp" style={{ width: 34, height: 34, borderRadius: 8 }} />
+            <div><span style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>LibreApp</span><p style={{ fontSize: 9.5, color: C.textLight }}>Suite Legal</p></div>
           </div>
           <div style={{ padding: "8px 10px", background: C.sidebarLight, borderRadius: 8, borderLeft: `3px solid ${C.primary}` }}>
             <p style={{ fontSize: 10.5, color: C.primaryLight, fontWeight: 600 }}>Exp. {user.caseId}</p>
@@ -135,10 +135,10 @@ export default function ClientApp({ user, onLogout }) {
 
       <header className="mh" style={{ position: "fixed", top: 0, left: 0, right: 0, height: 56, background: C.sidebar, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px", zIndex: 100 }}>
         <button onClick={() => setMobMenu(true)} style={{ background: "none", color: "#fff" }}><Menu size={22} /></button>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}><img src={LOGO} alt="" style={{ width: 24, height: 24, borderRadius: 5 }} /><span style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>LibreDeuda</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}><img src={LOGO} alt="" style={{ width: 24, height: 24, borderRadius: 5 }} /><span style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>LibreApp</span></div>
         <div style={{ width: 22 }} />
       </header>
-      {mobMenu && <div className="mo" style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex" }}><div onClick={() => setMobMenu(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)" }} /><div style={{ position: "relative", width: 260, background: C.sidebar, height: "100%", display: "flex", flexDirection: "column", animation: "slideIn .25s ease" }}><div style={{ padding: 18, borderBottom: `1px solid ${C.sidebarMid}`, display: "flex", alignItems: "center", gap: 8 }}><img src={LOGO} alt="" style={{ width: 22, height: 22, borderRadius: 4 }} /><span style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>LibreDeuda</span></div><nav style={{ flex: 1, padding: 9 }}>{navItems.map(i => <button key={i.id} onClick={() => { setPage(i.id); setMobMenu(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 2, background: page === i.id ? C.sidebarLight : "transparent", color: page === i.id ? "#fff" : "rgba(255,255,255,.5)", fontSize: 13.5, textAlign: "left" }}><i.icon size={16} />{i.label}</button>)}</nav><div style={{ padding: 12, borderTop: `1px solid ${C.sidebarMid}` }}><button onClick={() => { onLogout(); setMobMenu(false); }} style={{ width: "100%", padding: 8, borderRadius: 6, background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.4)", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LogOut size={12} />Cerrar sesión</button></div></div></div>}
+      {mobMenu && <div className="mo" style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex" }}><div onClick={() => setMobMenu(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)" }} /><div style={{ position: "relative", width: 260, background: C.sidebar, height: "100%", display: "flex", flexDirection: "column", animation: "slideIn .25s ease" }}><div style={{ padding: 18, borderBottom: `1px solid ${C.sidebarMid}`, display: "flex", alignItems: "center", gap: 8 }}><img src={LOGO} alt="" style={{ width: 22, height: 22, borderRadius: 4 }} /><span style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>LibreApp</span></div><nav style={{ flex: 1, padding: 9 }}>{navItems.map(i => <button key={i.id} onClick={() => { setPage(i.id); setMobMenu(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 2, background: page === i.id ? C.sidebarLight : "transparent", color: page === i.id ? "#fff" : "rgba(255,255,255,.5)", fontSize: 13.5, textAlign: "left" }}><i.icon size={16} />{i.label}</button>)}</nav><div style={{ padding: 12, borderTop: `1px solid ${C.sidebarMid}` }}><button onClick={() => { onLogout(); setMobMenu(false); }} style={{ width: "100%", padding: 8, borderRadius: 6, background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.4)", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><LogOut size={12} />Cerrar sesión</button></div></div></div>}
 
       <main className="mc" style={{ marginLeft: 260, flex: 1, padding: "24px 30px", minHeight: "100vh" }}>
         <div style={{ marginBottom: 22 }}>
@@ -631,7 +631,7 @@ function Chat({messages,setMessages,docs,user,caseLabel}){
   const docCtx=docs.map(d=>`- [${d.status==="pending"?"PENDIENTE":d.status==="uploaded"?"VERIFICADO":"EN REVISIÓN"}] ${d.name} (${d.cat})${d.warn?` ⚠ ${d.warn}`:""}${!d.required?" [opcional]":""}`).join("\n");
   async function send(){
     if(!input.trim()||ld)return;const msg=input.trim();setInput("");setMessages(p=>[...p,{role:"user",content:msg}]);setLd(true);
-    try{const sys=`Eres el asistente documental de LibreDeuda Abogados. Cliente: ${user.name} | Exp: ${user.caseId} | Procedimiento: ${caseLabel} | Letrado: ${user.lawyer}\nDOCUMENTACIÓN:\n${docCtx}\nAyuda con documentos, sedes electrónicas (AEAT, TGSS, CIRBE, empadronamiento, antecedentes penales). Español de España, cercano, tutea, mensajes concisos.`;
+    try{const sys=`Eres el asistente documental de LibreApp. Cliente: ${user.name} | Exp: ${user.caseId} | Procedimiento: ${caseLabel} | Letrado: ${user.lawyer}\nDOCUMENTACIÓN:\n${docCtx}\nAyuda con documentos, sedes electrónicas (AEAT, TGSS, CIRBE, empadronamiento, antecedentes penales). Español de España, cercano, tutea, mensajes concisos.`;
       const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[...messages.slice(-10),{role:"user",content:msg}].map(m=>({role:m.role,content:m.content}))})});
       const data=await res.json();const reply=data.content?.map(b=>b.text||"").join("")||"Error, ¿puedes repetir?";
       setMessages(p=>[...p,{role:"assistant",content:reply}]);
@@ -642,7 +642,7 @@ function Chat({messages,setMessages,docs,user,caseLabel}){
   return(<div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)",background:C.card,borderRadius:14,border:`1px solid ${C.border}`,overflow:"hidden"}}>
     <div style={{padding:"12px 18px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:9}}>
       <img src={LOGO} alt="" style={{width:34,height:34,borderRadius:8}}/>
-      <div><h3 style={{fontSize:13,fontWeight:600}}>Asistente LibreDeuda</h3><p style={{fontSize:10.5,color:C.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:C.green}}/>En línea</p></div>
+      <div><h3 style={{fontSize:13,fontWeight:600}}>Asistente LibreApp</h3><p style={{fontSize:10.5,color:C.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:C.green}}/>En línea</p></div>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"16px 18px",display:"flex",flexDirection:"column",gap:12}}>
       {messages.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
