@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { C, font } from "../../constants";
+import { supabase } from "../../lib/supabase";
 
 const sourceOptions = [
   { value: "website", label: "Web" },
@@ -20,13 +21,6 @@ const statusOptions = [
   { value: "archived", label: "Archivado" },
 ];
 
-const teamMembers = [
-  { value: "", label: "Sin asignar" },
-  { value: "Carlos Martinez", label: "Carlos Martinez" },
-  { value: "Ana Beltran", label: "Ana Beltran" },
-  { value: "Laura Garcia", label: "Laura Garcia" },
-];
-
 export default function ContactForm({ contact, onSave, onClose }) {
   const isEdit = !!contact;
   const [form, setForm] = useState({
@@ -41,6 +35,30 @@ export default function ContactForm({ contact, onSave, onClose }) {
     notes_text: "",
   });
   const [hoveredBtn, setHoveredBtn] = useState(null);
+  const [teamMembers, setTeamMembers] = useState([{ value: "", label: "Sin asignar" }]);
+  const [orgId, setOrgId] = useState(null);
+
+  useEffect(() => {
+    async function loadTeam() {
+      const { data } = await supabase.from('users').select('id, full_name, role');
+      if (data) {
+        setTeamMembers([
+          { value: "", label: "Sin asignar" },
+          ...data.map(u => ({ value: u.id, label: `${u.full_name} (${u.role})` }))
+        ]);
+      }
+    }
+    loadTeam();
+  }, []);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
+        const { data } = await supabase.from('users').select('org_id').eq('id', user.id).single();
+        if (data) setOrgId(data.org_id);
+      }
+    });
+  }, []);
 
   function handleChange(field, value) {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -49,7 +67,23 @@ export default function ContactForm({ contact, onSave, onClose }) {
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.first_name.trim() || !form.email.trim()) return;
-    onSave(form);
+    const contactData = {
+      first_name: form.first_name,
+      last_name: form.last_name,
+      email: form.email,
+      phone: form.phone,
+      company: form.company,
+      source: form.source,
+      assigned_to: form.assigned_to || null,
+      notes_text: form.notes_text,
+      org_id: orgId,
+    };
+    if (contact) {
+      // Edit mode - don't include org_id in update
+      delete contactData.org_id;
+      contactData.status = form.status;
+    }
+    onSave(contactData);
   }
 
   const inputStyle = {

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ArrowLeft, Mail, Phone, Building2, Edit3, PhoneCall, Send,
   UserCheck, Tag, Plus, Clock, FileText, MessageSquare, ChevronDown
 } from "lucide-react";
 import { C, font } from "../../constants";
+import { supabase } from "../../lib/supabase";
 import ContactForm from "./ContactForm";
 
 const statusConfig = {
@@ -20,35 +21,78 @@ const sourceLabels = {
   manual: 'Manual', whatsapp: 'WhatsApp', api: 'API',
 };
 
-const MOCK_ACTIVITIES = [
-  { id: 1, action: 'created', description: 'Contacto creado', performed_by: 'Sistema', created_at: '2026-04-10T10:00:00' },
-  { id: 2, action: 'status_changed', description: 'Estado cambiado a Contactado', performed_by: 'Carlos Martinez', created_at: '2026-04-11T14:30:00' },
-  { id: 3, action: 'note_added', description: 'Nota anadida: "Interesado en LSO"', performed_by: 'Carlos Martinez', created_at: '2026-04-12T09:15:00' },
-];
-
-const MOCK_TAGS = ["LSO", "Urgente"];
-
-const TEAM = ["Carlos Martinez", "Ana Beltran", "Laura Garcia"];
-
 export default function ContactDetail({ contact, setPage, setSelectedContact }) {
   const [data, setData] = useState({ ...contact });
   const [status, setStatus] = useState(contact.status);
   const [assignedTo, setAssignedTo] = useState(contact.assigned_to || "");
-  const [tags, setTags] = useState(MOCK_TAGS);
+  const [tags, setTags] = useState([]);
+  const [allTags, setAllTags] = useState([]);
   const [newTag, setNewTag] = useState("");
   const [showTagInput, setShowTagInput] = useState(false);
-  const [notes, setNotes] = useState([
-    { id: 1, text: "Interesado en procedimiento LSO. Tiene deudas con 3 entidades.", author: "Carlos Martinez", date: "2026-04-12" },
-  ]);
+  const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState("");
+  const [cases, setCases] = useState([]);
+  const [team, setTeam] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [showEditForm, setShowEditForm] = useState(false);
-  const [activities] = useState(MOCK_ACTIVITIES);
   const [hoveredBtn, setHoveredBtn] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const st = statusConfig[status] || statusConfig.lead;
 
+  useEffect(() => {
+    if (!contact?.id) return;
+    loadData();
+  }, [contact?.id]);
+
+  async function loadData() {
+    setLoading(true);
+
+    // Fetch activities for this contact
+    const { data: acts } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('entity_type', 'contact')
+      .eq('entity_id', contact.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    setActivities(acts || []);
+
+    // Fetch tags for this contact
+    const { data: contactTags } = await supabase
+      .from('contact_tags')
+      .select('tag_id, tags(id, name, color)')
+      .eq('contact_id', contact.id);
+    setTags((contactTags || []).map(ct => ct.tags));
+
+    // Fetch all available tags
+    const { data: at } = await supabase.from('tags').select('*');
+    setAllTags(at || []);
+
+    // Fetch notes for this contact
+    const { data: n } = await supabase
+      .from('notes')
+      .select('*, author:users!notes_author_id_fkey(full_name)')
+      .eq('contact_id', contact.id)
+      .order('created_at', { ascending: false });
+    setNotes(n || []);
+
+    // Fetch cases linked to this contact
+    const { data: c } = await supabase
+      .from('cases')
+      .select('*, lawyer:users!cases_assigned_lawyer_id_fkey(full_name)')
+      .eq('contact_id', contact.id);
+    setCases(c || []);
+
+    // Fetch team members for assignment dropdown
+    const { data: t } = await supabase.from('users').select('id, full_name, role');
+    setTeam(t || []);
+
+    setLoading(false);
+  }
+
   function getInitials() {
-    return (data.first_name[0] + (data.last_name[0] || "")).toUpperCase();
+    return (data.first_name[0] + (data.last_name?.[0] || "")).toUpperCase();
   }
 
   function handleBack() {
@@ -56,26 +100,133 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
     setPage("contacts");
   }
 
-  function handleAddNote() {
-    if (!newNote.trim()) return;
-    setNotes(prev => [{ id: Date.now(), text: newNote, author: "Admin", date: new Date().toISOString().slice(0, 10) }, ...prev]);
-    setNewNote("");
+  async function handleStatusChange(newStatus) {
+    const oldStatus = status;
+    setStatus(newStatus);
+    await supabase.from('contacts').update({ status: newStatus }).eq('id', contact.id);
+    await supabase.from('activities').insert({
+      org_id: contact.org_id,
+      entity_type: 'contact',
+      entity_id: contact.id,
+      action: 'status_changed',
+      description: `Estado cambiado de ${statusConfig[oldStatus]?.label || oldStatus} a ${statusConfig[newStatus]?.label || newStatus}`,
+    });
+    loadData();
   }
 
-  function handleAddTag() {
-    if (!newTag.trim() || tags.includes(newTag.trim())) return;
-    setTags(prev => [...prev, newTag.trim()]);
+  async function handleAssignedToChange(userId) {
+    setAssignedTo(userId);
+    await supabase.from('contacts').update({ assigned_to: userId || null }).eq('id', contact.id);
+    const memberName = team.find(t => t.id === userId)?.full_name || 'Sin asignar';
+    await supabase.from('activities').insert({
+      org_id: contact.org_id,
+      entity_type: 'contact',
+      entity_id: contact.id,
+      action: 'assigned',
+      description: `Asignado a ${memberName}`,
+    });
+    loadData();
+  }
+
+  async function handleAddNote() {
+    if (!newNote.trim()) return;
+    const { data: userData } = await supabase.auth.getUser();
+    const currentUserId = userData?.user?.id;
+    await supabase.from('notes').insert({
+      contact_id: contact.id,
+      org_id: contact.org_id,
+      author_id: currentUserId,
+      content: newNote.trim(),
+    });
+    await supabase.from('activities').insert({
+      org_id: contact.org_id,
+      entity_type: 'contact',
+      entity_id: contact.id,
+      action: 'note_added',
+      description: `Nota anadida: "${newNote.trim().substring(0, 50)}${newNote.trim().length > 50 ? '...' : ''}"`,
+    });
+    setNewNote("");
+    loadData();
+  }
+
+  async function handleAddTag() {
+    if (!newTag.trim()) return;
+    // Check if it's an existing tag from allTags
+    const existingTag = allTags.find(t => t.name.toLowerCase() === newTag.trim().toLowerCase());
+    let tagId;
+    if (existingTag) {
+      tagId = existingTag.id;
+    } else {
+      // Create new tag
+      const { data: createdTag } = await supabase.from('tags').insert({
+        name: newTag.trim(),
+        color: C.primary,
+      }).select().single();
+      if (!createdTag) return;
+      tagId = createdTag.id;
+    }
+    // Check if already linked
+    const alreadyLinked = tags.some(t => t.id === tagId);
+    if (alreadyLinked) {
+      setNewTag("");
+      setShowTagInput(false);
+      return;
+    }
+    await supabase.from('contact_tags').insert({
+      contact_id: contact.id,
+      tag_id: tagId,
+    });
     setNewTag("");
     setShowTagInput(false);
+    loadData();
   }
 
-  function handleRemoveTag(t) {
-    setTags(prev => prev.filter(x => x !== t));
+  async function handleRemoveTag(tagId) {
+    await supabase.from('contact_tags').delete().eq('contact_id', contact.id).eq('tag_id', tagId);
+    loadData();
   }
 
-  function handleEditSave(updated) {
+  async function handleEditSave(updated) {
+    await supabase.from('contacts').update({
+      first_name: updated.first_name,
+      last_name: updated.last_name,
+      email: updated.email,
+      phone: updated.phone,
+      company: updated.company,
+      source: updated.source,
+      status: updated.status,
+      assigned_to: updated.assigned_to || null,
+    }).eq('id', contact.id);
     setData(prev => ({ ...prev, ...updated }));
+    if (updated.status) setStatus(updated.status);
+    if (updated.assigned_to !== undefined) setAssignedTo(updated.assigned_to);
     setShowEditForm(false);
+    loadData();
+  }
+
+  async function convertToClient() {
+    // Update contact status
+    await supabase.from('contacts').update({ status: 'client' }).eq('id', contact.id);
+    // Create a case
+    await supabase.from('cases').insert({
+      org_id: contact.org_id,
+      contact_id: contact.id,
+      case_type: 'other',
+      phase: 'intake',
+      status: 'active',
+      progress: 0,
+    }).select().single();
+    // Log activity
+    await supabase.from('activities').insert({
+      org_id: contact.org_id,
+      entity_type: 'contact',
+      entity_id: contact.id,
+      action: 'status_changed',
+      description: 'Convertido a cliente. Caso creado.',
+    });
+    // Reload
+    setStatus('client');
+    loadData();
   }
 
   function formatDateTime(d) {
@@ -189,7 +340,7 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
           ))}
           {status !== "client" && (
             <button
-              onClick={() => setStatus("client")}
+              onClick={convertToClient}
               onMouseEnter={() => setHoveredBtn("convert")}
               onMouseLeave={() => setHoveredBtn(null)}
               style={{
@@ -268,13 +419,13 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
               <div key={n.id} style={{
                 padding: "12px 14px", background: C.bg, borderRadius: 10, marginBottom: 8,
               }}>
-                <p style={{ fontSize: 13, color: C.text, margin: 0, lineHeight: 1.5 }}>{n.text}</p>
+                <p style={{ fontSize: 13, color: C.text, margin: 0, lineHeight: 1.5 }}>{n.content}</p>
                 <p style={{ fontSize: 10.5, color: C.textMuted, marginTop: 6, margin: 0, marginTop: 6 }}>
-                  {n.author} - {n.date}
+                  {n.author?.full_name || 'Sistema'} - {new Date(n.created_at).toLocaleDateString("es-ES")}
                 </p>
               </div>
             ))}
-            {notes.length === 0 && (
+            {notes.length === 0 && !loading && (
               <p style={{ fontSize: 12, color: C.textMuted, textAlign: "center", padding: 16 }}>Sin notas</p>
             )}
           </Card>
@@ -288,7 +439,7 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
               <p style={{ fontSize: 10.5, color: C.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600 }}>Estado actual</p>
               <select
                 value={status}
-                onChange={e => setStatus(e.target.value)}
+                onChange={e => handleStatusChange(e.target.value)}
                 style={{
                   width: "100%", padding: "10px 14px", borderRadius: 10,
                   border: `1.5px solid ${C.border}`, fontSize: 13,
@@ -305,7 +456,7 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
               <p style={{ fontSize: 10.5, color: C.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600 }}>Asignado a</p>
               <select
                 value={assignedTo}
-                onChange={e => setAssignedTo(e.target.value)}
+                onChange={e => handleAssignedToChange(e.target.value)}
                 style={{
                   width: "100%", padding: "10px 14px", borderRadius: 10,
                   border: `1.5px solid ${C.border}`, fontSize: 13,
@@ -314,18 +465,24 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
                 }}
               >
                 <option value="">Sin asignar</option>
-                {TEAM.map(t => <option key={t} value={t}>{t}</option>)}
+                {team.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
               </select>
             </div>
           </Card>
 
           {/* Cases card */}
           <Card title="Casos vinculados" icon={FileText}>
-            {status === "client" ? (
-              <div style={{ padding: "10px 14px", background: C.bg, borderRadius: 10 }}>
-                <p style={{ fontSize: 12, fontWeight: 500, color: C.text, margin: 0 }}>EXP-2026-001</p>
-                <p style={{ fontSize: 10.5, color: C.textMuted, marginTop: 2, margin: 0, marginTop: 2 }}>LSO - En curso</p>
-              </div>
+            {cases.length > 0 ? (
+              cases.map(c => (
+                <div key={c.id} style={{ padding: "10px 14px", background: C.bg, borderRadius: 10, marginBottom: 6 }}>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: C.text, margin: 0 }}>
+                    {c.case_type || 'Caso'} - {c.phase || ''}
+                  </p>
+                  <p style={{ fontSize: 10.5, color: C.textMuted, marginTop: 2, margin: 0, marginTop: 2 }}>
+                    {c.status || ''}{c.lawyer?.full_name ? ` - ${c.lawyer.full_name}` : ''}
+                  </p>
+                </div>
+              ))
             ) : (
               <p style={{ fontSize: 12, color: C.textMuted, textAlign: "center", padding: 16 }}>Sin casos vinculados</p>
             )}
@@ -336,16 +493,17 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {tags.map(t => (
                 <span
-                  key={t}
+                  key={t.id}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 4,
                     padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500,
-                    background: "rgba(91,107,240,0.08)", color: C.primary,
+                    background: t.color ? `${t.color}14` : "rgba(91,107,240,0.08)",
+                    color: t.color || C.primary,
                   }}
                 >
-                  {t}
+                  {t.name}
                   <span
-                    onClick={() => handleRemoveTag(t)}
+                    onClick={() => handleRemoveTag(t.id)}
                     style={{ cursor: "pointer", fontSize: 14, lineHeight: 1, marginLeft: 2, color: C.textMuted }}
                   >
                     x
@@ -360,11 +518,17 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
                     onKeyDown={e => e.key === "Enter" && handleAddTag()}
                     placeholder="Etiqueta..."
                     autoFocus
+                    list="available-tags"
                     style={{
                       padding: "4px 10px", borderRadius: 8, border: `1px solid ${C.border}`,
                       fontSize: 11, fontFamily: font, width: 100, outline: "none",
                     }}
                   />
+                  <datalist id="available-tags">
+                    {allTags.filter(at => !tags.some(t => t.id === at.id)).map(at => (
+                      <option key={at.id} value={at.name} />
+                    ))}
+                  </datalist>
                   <button
                     onClick={handleAddTag}
                     style={{
@@ -421,11 +585,14 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 12.5, color: C.text, margin: 0, fontWeight: 500 }}>{a.description}</p>
                     <p style={{ fontSize: 10.5, color: C.textMuted, marginTop: 3, margin: 0, marginTop: 3 }}>
-                      {a.performed_by} - {formatDateTime(a.created_at)}
+                      {a.performed_by || 'Sistema'} - {formatDateTime(a.created_at)}
                     </p>
                   </div>
                 </div>
               ))}
+              {activities.length === 0 && !loading && (
+                <p style={{ fontSize: 12, color: C.textMuted, textAlign: "center", padding: 16 }}>Sin actividad registrada</p>
+              )}
             </div>
           </Card>
         </div>

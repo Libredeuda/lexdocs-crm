@@ -6,6 +6,7 @@ import AdminDashboard from "./AdminDashboard";
 import AdminCaseList from "./AdminCaseList";
 import ContactList from "./contacts/ContactList";
 import ContactPipeline from "./contacts/ContactPipeline";
+import ContactDetail from "./contacts/ContactDetail";
 import OrgSettings from "./settings/OrgSettings";
 import TeamMembers from "./settings/TeamMembers";
 import ApiKeys from "./settings/ApiKeys";
@@ -252,7 +253,13 @@ export default function AdminApp({ user, onLogout }) {
           {page === "cases" && <AdminCaseList cases={cases} />}
           {page === "contacts" && <ContactList setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "pipeline" && <ContactPipeline setPage={setPage} setSelectedContact={setSelectedContact} />}
-          {page === "contact-detail" && <PlaceholderPage title="Detalle de contacto" />}
+          {page === "contact-detail" && selectedContact && (
+            <ContactDetail
+              contact={selectedContact}
+              setPage={setPage}
+              setSelectedContact={setSelectedContact}
+            />
+          )}
           {page === "settings" && settingsTab === "org" && <OrgSettings />}
           {page === "settings" && settingsTab === "team" && <TeamMembers />}
           {page === "settings" && settingsTab === "apikeys" && <ApiKeys />}
