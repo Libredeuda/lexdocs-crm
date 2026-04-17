@@ -83,7 +83,8 @@ export default function AdminCaseList({ cases }) {
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.client.name}</p>
-                  <p style={{ fontSize: 10.5, color: C.textMuted }}>Letrado: {c.client.lawyer}</p>
+                  <p style={{ fontSize: 10.5, color: C.textMuted }}>Abogado: {c.client.lawyer}</p>
+                  <p style={{ fontSize: 10.5, color: C.textMuted }}>Procurador: {c.client.procurador || 'Sin asignar'}</p>
                 </div>
               </div>
 

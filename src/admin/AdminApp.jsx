@@ -28,7 +28,7 @@ export default function AdminApp({ user, onLogout }) {
     async function loadCases() {
       const { data: casesData } = await supabase
         .from('cases')
-        .select('*, contact:contacts(first_name, last_name, email, company), lawyer:users!cases_assigned_lawyer_id_fkey(full_name)');
+        .select('*, contact:contacts(first_name, last_name, email, company), lawyer:users!cases_assigned_lawyer_id_fkey(full_name, professional_title, colegio, colegiado_num), procurador:users!cases_assigned_procurador_id_fkey(full_name, professional_title, colegio, colegiado_num)');
 
       // Also get document stats and payment stats
       const { data: docs } = await supabase.from('documents').select('case_id, status');
@@ -47,6 +47,13 @@ export default function AdminApp({ user, onLogout }) {
             caseType: c.case_type,
             caseId: c.case_number,
             lawyer: c.lawyer?.full_name || 'Sin asignar',
+            lawyerTitle: c.lawyer?.professional_title,
+            lawyerColegio: c.lawyer?.colegio,
+            lawyerColegiado: c.lawyer?.colegiado_num,
+            procurador: c.procurador?.full_name || null,
+            procuradorTitle: c.procurador?.professional_title,
+            procuradorColegio: c.procurador?.colegio,
+            procuradorColegiado: c.procurador?.colegiado_num,
             company: c.contact?.company,
           },
           docs: caseDocs,

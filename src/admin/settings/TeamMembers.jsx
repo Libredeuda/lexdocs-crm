@@ -1,24 +1,36 @@
-import { useState } from "react";
-import { Plus, Check, ChevronDown, UserX, UserCheck } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Check, ChevronDown, UserX, UserCheck, Briefcase, Award } from "lucide-react";
 import { C } from "../../constants";
-
-const MOCK_TEAM = [
-  { id: '1', full_name: 'Carlos Martinez', email: 'carlos@libredeuda.com', role: 'owner', is_active: true },
-  { id: '2', full_name: 'Ana Beltran', email: 'ana@libredeuda.com', role: 'lawyer', is_active: true },
-  { id: '3', full_name: 'Laura Sanchez', email: 'laura@libredeuda.com', role: 'staff', is_active: true },
-];
+import { supabase } from "../../lib/supabase";
 
 const ROLE_COLORS = {
   owner: { bg: `${C.violet}15`, color: C.violet, label: "Propietario" },
   admin: { bg: `${C.blue}15`, color: C.blue, label: "Admin" },
   lawyer: { bg: `${C.teal}15`, color: C.teal, label: "Abogado" },
+  procurador: { bg: `${C.orange}15`, color: C.orange, label: "Procurador" },
   staff: { bg: `${C.textMuted}12`, color: C.textMuted, label: "Staff" },
+  client: { bg: `${C.green}15`, color: C.green, label: "Cliente" },
 };
 
 export default function TeamMembers() {
-  const [team, setTeam] = useState(MOCK_TEAM);
+  const [team, setTeam] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [editingRole, setEditingRole] = useState(null);
+
+  useEffect(() => {
+    async function load() {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email, role, is_active, professional_title, colegio, colegiado_num')
+        .neq('role', 'client')
+        .order('role', { ascending: true });
+      if (error) console.error(error);
+      setTeam(data || []);
+      setLoading(false);
+    }
+    load();
+  }, []);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -113,16 +125,26 @@ export default function TeamMembers() {
               }}
             >
               {/* Name + Avatar */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: "50%",
                   background: `linear-gradient(135deg, ${C.primary}20, ${C.violet}15)`,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 12, fontWeight: 700, color: C.primary,
+                  fontSize: 12, fontWeight: 700, color: C.primary, flexShrink: 0,
                 }}>
                   {getInitials(member.full_name)}
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{member.full_name}</span>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.full_name}</p>
+                  {member.colegio && (
+                    <p style={{ fontSize: 10, color: C.textMuted, marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}>
+                      <Award size={9} />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {member.colegio}{member.colegiado_num ? ' · Col. ' + member.colegiado_num : ''}
+                      </span>
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Email */}

@@ -35,21 +35,21 @@ export default function ContactForm({ contact, onSave, onClose }) {
     notes_text: "",
   });
   const [hoveredBtn, setHoveredBtn] = useState(null);
-  const [teamMembers, setTeamMembers] = useState([{ value: "", label: "Sin asignar" }]);
+  const [allTeam, setAllTeam] = useState([]);
   const [orgId, setOrgId] = useState(null);
 
   useEffect(() => {
     async function loadTeam() {
-      const { data } = await supabase.from('users').select('id, full_name, role');
-      if (data) {
-        setTeamMembers([
-          { value: "", label: "Sin asignar" },
-          ...data.map(u => ({ value: u.id, label: `${u.full_name} (${u.role})` }))
-        ]);
-      }
+      const { data } = await supabase.from('users').select('id, full_name, role, professional_title, colegio, colegiado_num').eq('is_active', true);
+      if (data) setAllTeam(data);
     }
     loadTeam();
   }, []);
+
+  const teamMembers = [
+    { value: "", label: "Sin asignar" },
+    ...allTeam.map(u => ({ value: u.id, label: `${u.full_name}${u.professional_title ? ' (' + u.professional_title + ')' : ' (' + u.role + ')'}` }))
+  ];
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
