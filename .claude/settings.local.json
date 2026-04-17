@@ -11,7 +11,16 @@
       "Bash(pbcopy)",
       "Bash(git --version)",
       "Bash(open \"https://supabase.com/dashboard/project/agzcaqgxlyrtbxtyxkwp/sql/new\")",
-      "Bash(curl -s -X POST https://agzcaqgxlyrtbxtyxkwp.supabase.co/auth/v1/admin/users -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnemNhcWd4bHlydGJ4dHl4a3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDMyOTQsImV4cCI6MjA5MTgxOTI5NH0.9zBiQbqs2Im4Krtq76u9qr8YRqY5pplLJgAvYJPvWVE' -H 'Content-Type: application/json' -d '{\"email\":\"carlos@libredeuda.com\",\"password\":\"admin1234\",\"email_confirm\":true}')"
+      "Bash(curl -s -X POST https://agzcaqgxlyrtbxtyxkwp.supabase.co/auth/v1/admin/users -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnemNhcWd4bHlydGJ4dHl4a3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDMyOTQsImV4cCI6MjA5MTgxOTI5NH0.9zBiQbqs2Im4Krtq76u9qr8YRqY5pplLJgAvYJPvWVE' -H 'Content-Type: application/json' -d '{\"email\":\"carlos@libredeuda.com\",\"password\":\"admin1234\",\"email_confirm\":true}')",
+      "Bash(npx vercel:*)",
+      "Bash(npx supabase:*)",
+      "Bash(brew install:*)",
+      "Bash(supabase login:*)",
+      "Bash(open \"https://supabase.com/dashboard/account/tokens\")",
+      "Bash(export SUPABASE_ACCESS_TOKEN=sbp_a52943d782088834506d22becc3ff0897260af89)",
+      "Bash(supabase link:*)",
+      "Bash(supabase secrets:*)",
+      "Bash(supabase functions:*)"
     ]
   }
 }

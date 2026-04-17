@@ -93,6 +93,21 @@ export default function Carlota({ user, currentModule = "general", currentContex
     if (isOpen) setHasPulse(false);
   }, [isOpen]);
 
+  // Listen for global event to open Carlota (with optional initial message)
+  useEffect(() => {
+    function handler(e) {
+      setIsOpen(true);
+      const initial = e?.detail?.message;
+      if (initial) {
+        // Wait a tick for the panel to mount, then send the message
+        setTimeout(() => sendMessage(initial), 300);
+      }
+    }
+    window.addEventListener("open-carlota", handler);
+    return () => window.removeEventListener("open-carlota", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function sendMessage(text) {
     const msg = (text || input).trim();
     if (!msg || isTyping) return;

@@ -5,15 +5,52 @@ import { statusMap, getS, evSt, getEv, fmtD, fmtMoney, daysUntil, payStatusMap, 
 import Carlota from "../components/Carlota";
 import { supabase } from "../lib/supabase";
 
-// Verificación documental con Claude Vision (con backend proxy o modo demo)
+// Verificación documental con Claude Vision via Supabase Edge Function
 async function verifyDocWithAI(file, docId, clientName) {
   const sig = KB[docId];
-  if (!sig) {
-    return { verdict: "needs_review", message: "Documento no en base de conocimiento. Tu letrado lo revisará manualmente." };
-  }
-  await new Promise(r => setTimeout(r, 1800 + Math.random() * 1500));
+  const docName = sig?.name || "Documento legal";
+
+  // Word/Excel/CSV: skip vision verification
   if (file.type.includes("word") || file.type.includes("sheet") || file.type.includes("excel") || file.name.match(/\.(xlsx?|docx?|csv)$/i)) {
-    return { verdict: "needs_review", confidence: 60, documentType: "Archivo editable", message: `${clientName}, he recibido tu archivo "${sig.name}". Como es un formato editable (Word/Excel), lo revisará tu letrado manualmente.` };
+    return { verdict: "needs_review", confidence: 60, documentType: "Archivo editable", message: `${clientName}, he recibido tu archivo "${docName}". Como es un formato editable (Word/Excel), lo revisará tu letrado manualmente.` };
+  }
+
+  // Try Edge Function for real Claude Vision verification (only for images)
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (supabaseUrl && supabaseKey && file.type.startsWith("image/")) {
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch(`${supabaseUrl}/functions/v1/verify-document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify({
+          imageBase64: base64,
+          mimeType: file.type,
+          docId,
+          docName,
+          issuer: sig?.issuer || '',
+          validity: sig?.validity || '',
+          criteria: sig?.criteria || '',
+          clientName,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success !== false) return data;
+      }
+    } catch (e) { console.warn('Edge verify failed, falling back:', e.message); }
+  }
+
+  // Fallback: simple validation without AI
+  await new Promise(r => setTimeout(r, 1200));
+  if (!sig) {
+    return { verdict: "needs_review", message: `${clientName}, he recibido tu documento. Tu letrado lo revisará manualmente.` };
   }
   const apiUrl = import.meta.env.VITE_VERIFY_API_URL;
   if (apiUrl) {
@@ -34,19 +71,28 @@ async function verifyDocWithAI(file, docId, clientName) {
   if (isImage && fileSizeKB < 30) {
     return { verdict: "unreadable", confidence: 80, documentType: "Imagen de baja calidad", message: `${clientName}, la imagen está borrosa o tiene poca resolución. Hazle una foto con mejor luz o usa el escáner integrado.`, warnings: ["Resolución insuficiente para verificar el contenido"] };
   }
-  const rand = Math.random();
-  const today = new Date();
-  if (rand < 0.70) {
-    return { verdict: "valid", confidence: 88 + Math.floor(Math.random() * 10), documentType: sig.name, issuer: sig.issuer, issueDate: new Date(today - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], message: `¡Perfecto ${clientName}! He verificado que este documento es un ${sig.name} válido de ${sig.issuer}. Todo correcto.`, warnings: [] };
-  } else if (rand < 0.85) {
-    return { verdict: "incomplete", confidence: 75, documentType: sig.name, issuer: sig.issuer, message: `${clientName}, parece ser el documento correcto pero está incompleto. Falta alguna página o información clave. ¿Puedes subir el documento completo?`, warnings: ["Documento posiblemente incompleto", "Faltan páginas o secciones"] };
-  } else if (rand < 0.95) {
-    return { verdict: "wrong_document", confidence: 92, documentType: "Otro tipo de documento", message: `${clientName}, este archivo no parece ser un ${sig.name}. Necesitamos específicamente este documento. Te dejo abajo dónde puedes conseguirlo.`, warnings: ["El documento subido no coincide con el solicitado"] };
-  } else {
-    const oldDate = new Date(today - 120 * 24 * 60 * 60 * 1000);
-    return { verdict: "expired", confidence: 90, documentType: sig.name, issuer: sig.issuer, issueDate: oldDate.toISOString().split("T")[0], message: `${clientName}, este documento está caducado (tiene más de 3 meses). Necesitamos uno actualizado. Es rápido pedir uno nuevo.`, warnings: ["Documento caducado", "La vigencia legal es de 3 meses"] };
-  }
+  // Fallback when no AI verification is available: send to manual review
+  return { verdict: "needs_review", confidence: 70, documentType: sig.name, issuer: sig.issuer, message: `${clientName}, he recibido tu ${sig.name}. Tu letrado lo revisará y te avisará si todo está correcto.`, warnings: [] };
 }
+
+// Mini-guías genéricas por categoría (fallback cuando KB no tiene el documento)
+const CATEGORY_GUIDES = {
+  "Datos Personales": "Estos documentos los obtienes en sede electrónica del organismo o en su oficina física.",
+  "Situación Laboral": "Pídelos a tu empresa (RRHH) o accede a sede.agenciatributaria.gob.es con Cl@ve.",
+  "Situación Bancaria": "Descárgalos desde la banca online de tu entidad bancaria. Pestaña 'Documentos' o 'Certificados'.",
+  "Deudas y Acreedores": "Solicítalos en sede electrónica de cada organismo (AEAT, TGSS, etc.) con Cl@ve o certificado digital.",
+  "Inventario Bienes": "Escrituras: notaría/registro. Recibos IBI: ayuntamiento o banca online. Vehículos: tráfico.",
+  "Gastos e Ingresos": "Hoja de cálculo o documento simple con tus ingresos y gastos mensuales.",
+  "Contratos Vigentes": "Contratos firmados con tu empresa, banco u otras entidades. Solicítalos si no los tienes.",
+  "Identificación y Constitución": "Documentos societarios: notaría, registro mercantil, asesoría contable.",
+  "Doc. Contable y Fiscal": "Tu asesoría contable o tu portal de la AEAT con Cl@ve.",
+  "Memoria Económica y Jurídica": "Documento que prepara el letrado con tu información. Se redacta en el despacho.",
+  "Inventario Bienes (Masa Activa)": "Escrituras, registro de la propiedad, banca online de la empresa.",
+  "Lista Acreedores (Masa Pasiva)": "Sede electrónica de cada acreedor (bancos, AEAT, TGSS, proveedores).",
+  "Doc. Laboral": "Departamento de RRHH, asesoría laboral o sede.seg-social.gob.es.",
+  "Contratos y Rel. Jurídicas": "Contratos archivados en la empresa o solicítalos a las contrapartes.",
+  "Transmisiones Patrimoniales": "Notaría donde se firmaron las operaciones, registro mercantil.",
+};
 
 export default function ClientApp({ user, onLogout }) {
   const [page, setPage] = useState("dashboard");
@@ -229,7 +275,7 @@ export default function ClientApp({ user, onLogout }) {
         </div>}
 
         <div className="fade-in" key={page}>
-          {page === "dashboard" && <Dashboard docs={docs} pct={pct} setPage={setPage} events={events} cats={cats} user={user} pendingReq={pendingReq} firstName={firstName} />}
+          {page === "dashboard" && <Dashboard docs={docs} pct={pct} setPage={setPage} events={events} cats={cats} user={user} pendingReq={pendingReq} firstName={firstName} onFileSelected={handleFileSelected} onScan={id=>{setScanId(id);setShowScan(true);}} />}
           {page === "documents" && <Documents docs={docs} cats={cats} onFileSelected={handleFileSelected} onScan={id => { setScanId(id); setShowScan(true); }} pct={pct} firstName={firstName} />}
           {page === "timeline" && <Timeline docs={docs} cats={cats} pct={pct} user={user} caseLabel={caseLabel} />}
           {page === "calendar" && <Cal events={events} />}
@@ -369,78 +415,196 @@ function VerificationModal({verifying, result, firstName, onConfirm, onReject, e
 }
 
 // ════ DASHBOARD ════
-function Dashboard({docs,pct,setPage,events,cats,user,pendingReq,firstName}){
+function Dashboard({docs,pct,setPage,events,cats,user,pendingReq,firstName,onFileSelected,onScan}){
   const nextEv=events.filter(e=>new Date(e.date)>=new Date()).slice(0,3);
+  const urgentDocs = docs.filter(d => d.status === "pending" && d.required).slice(0, 4);
+  const fRef = useRef(null);
+  const [activeUpload, setActiveUpload] = useState(null);
+
+  function handleFileChange(e) {
+    const f = e.target.files?.[0];
+    if (f && activeUpload) {
+      onFileSelected(activeUpload, f);
+      setActiveUpload(null);
+      e.target.value = "";
+    }
+  }
+
+  function triggerUpload(docId, mode) {
+    setActiveUpload(docId);
+    if (mode === "camera") fRef.current?.setAttribute("capture", "environment");
+    else fRef.current?.removeAttribute("capture");
+    setTimeout(() => fRef.current?.click(), 50);
+  }
+
   return(<div>
-    <div style={{background:C.card,borderRadius:14,padding:"20px 24px",marginBottom:18,border:`1px solid ${C.border}`}}>
-      <h3 style={{fontSize:14,fontWeight:600,marginBottom:14}}>Progreso por categoría</h3>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:8}}>
+    <input ref={fRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{display:"none"}} onChange={handleFileChange}/>
+
+    {/* CTA Carlota */}
+    <div onClick={() => window.dispatchEvent(new CustomEvent('open-carlota'))} className="hover-lift" style={{cursor:"pointer", background:`linear-gradient(135deg, rgba(91,107,240,0.08), rgba(124,91,240,0.05))`, borderRadius:14, padding:"16px 20px", marginBottom:18, border:`1px solid ${C.primary}30`, display:"flex", alignItems:"center", gap:14}}>
+      <div style={{width:46, height:46, borderRadius:12, background:`linear-gradient(135deg, ${C.primary}, ${C.violet})`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:`0 4px 12px rgba(91,107,240,0.3)`}}>
+        <Sparkles size={22} color="#fff"/>
+      </div>
+      <div style={{flex:1, minWidth:0}}>
+        <p style={{fontSize:13.5, fontWeight:600, marginBottom:2}}>¿Tienes dudas? Pregunta a Carlota</p>
+        <p style={{fontSize:11.5, color:C.textMuted, lineHeight:1.4}}>Tu asistente legal con IA, disponible 24/7. Te explica cualquier documento, plazo o duda legal.</p>
+      </div>
+      <button style={{padding:"9px 14px", borderRadius:9, background:`linear-gradient(135deg, ${C.primary}, ${C.violet})`, color:"#fff", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:5, whiteSpace:"nowrap", flexShrink:0}}>
+        <MessageSquare size={13}/> Hablar
+      </button>
+    </div>
+
+    {/* DOCUMENTOS URGENTES */}
+    {urgentDocs.length > 0 && (
+      <div style={{background:C.card, borderRadius:14, padding:"18px 20px", marginBottom:18, border:`2px solid ${C.primary}30`, boxShadow:`0 4px 20px rgba(91,107,240,0.08)`}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, flexWrap:"wrap", gap:8}}>
+          <div>
+            <h3 style={{fontSize:15, fontWeight:700, display:"flex", alignItems:"center", gap:7}}>
+              <Upload size={16} color={C.primary}/> Sube tus documentos
+            </h3>
+            <p style={{fontSize:11.5, color:C.textMuted, marginTop:3}}>Tienes {pendingReq} documentos pendientes. Cuanto antes los subas, antes avanzaremos.</p>
+          </div>
+          <button onClick={()=>setPage("documents")} style={{fontSize:12, color:C.primary, background:"none", fontWeight:600, display:"flex", alignItems:"center", gap:3}}>Ver todos<ChevronRight size={12}/></button>
+        </div>
+        {urgentDocs.map(doc => {
+          const guide = KB[doc.id]?.whereToGet || CATEGORY_GUIDES[doc.cat] || "Tu letrado te indicará dónde conseguirlo.";
+          return (
+            <div key={doc.id} style={{padding:"12px 0", borderBottom:`1px solid ${C.bg}`}}>
+              <div style={{display:"flex", alignItems:"flex-start", gap:10, marginBottom:8, flexWrap:"wrap"}}>
+                <div style={{flex:1, minWidth:200}}>
+                  <p style={{fontSize:13, fontWeight:600}}>{doc.name}</p>
+                  <p style={{fontSize:10.5, color:C.textMuted, marginTop:3, lineHeight:1.4, display:"flex", alignItems:"flex-start", gap:5}}>
+                    <span style={{fontSize:11}}>💡</span><span>{guide}</span>
+                  </p>
+                </div>
+                <div style={{display:"flex", gap:5, flexShrink:0}}>
+                  <button onClick={()=>triggerUpload(doc.id, "file")} title="Adjuntar archivo" style={{padding:"8px 11px", borderRadius:8, background:`linear-gradient(135deg, ${C.primary}, ${C.violet})`, color:"#fff", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", gap:4}}>
+                    <Paperclip size={12}/> Subir
+                  </button>
+                  <button onClick={()=>triggerUpload(doc.id, "camera")} title="Hacer foto" style={{padding:"8px 10px", borderRadius:8, background:C.tealSoft, color:C.teal, fontSize:11, fontWeight:600, border:`1px solid ${C.teal}30`}}>
+                    <Camera size={12}/>
+                  </button>
+                  <button onClick={()=>onScan(doc.id)} title="Escanear" style={{padding:"8px 10px", borderRadius:8, background:`rgba(124,91,240,0.08)`, color:C.violet, fontSize:11, fontWeight:600, border:`1px solid ${C.violet}30`}}>
+                    <ScanLine size={12}/>
+                  </button>
+                </div>
+              </div>
+              <button onClick={(e)=>{e.stopPropagation(); window.dispatchEvent(new CustomEvent('open-carlota', {detail:{message:`Necesito ayuda para conseguir el documento: ${doc.name}`}}))}} style={{fontSize:10.5, color:C.primary, background:"none", padding:0, display:"inline-flex", alignItems:"center", gap:4, fontWeight:500}}>
+                <Sparkles size={10}/> ¿Dudas con este documento? Pregúntale a Carlota
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    )}
+
+    {/* Mensaje motivacional compacto */}
+    <div style={{background:`linear-gradient(135deg,${C.primary}15,${C.violet}08)`, borderRadius:12, padding:"12px 16px", marginBottom:18, display:"flex", alignItems:"center", gap:12, border:`1px solid ${C.primary}15`}}>
+      <div style={{flex:1}}>
+        <p style={{fontSize:12.5, color:C.text, lineHeight:1.5}}>{motivMsg(firstName, pct, pendingReq)}</p>
+      </div>
+      <div style={{textAlign:"center", flexShrink:0}}>
+        <div style={{fontSize:22, fontWeight:700, color:C.primary, lineHeight:1}}>{pct}%</div>
+        <div style={{fontSize:9, color:C.textMuted, textTransform:"uppercase", letterSpacing:".05em", marginTop:2}}>completado</div>
+      </div>
+    </div>
+
+    {/* Progreso por categoría */}
+    <div style={{background:C.card,borderRadius:14,padding:"16px 20px",marginBottom:18,border:`1px solid ${C.border}`}}>
+      <h3 style={{fontSize:13,fontWeight:600,marginBottom:12}}>Progreso por categoría</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
         {cats.map(cat=>{const cd=docs.filter(d=>d.cat===cat);const cu=cd.filter(d=>d.status==="uploaded"||d.status==="review").length;const cp=Math.round(cu/cd.length*100);const cn=cd[0]?.catNum;return(
-          <div key={cat} style={{padding:"10px 12px",borderRadius:10,background:C.bg,display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:28,height:28,borderRadius:8,background:cp===100?C.greenSoft:`rgba(91,107,240,.08)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:11,fontWeight:700,color:cp===100?C.green:C.primary}}>{cn}</span></div>
-            <div style={{flex:1,minWidth:0}}><p style={{fontSize:11.5,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat}</p>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}><div style={{flex:1,height:4,background:C.border,borderRadius:2}}><div style={{height:"100%",width:`${cp}%`,borderRadius:2,background:cp===100?C.green:`linear-gradient(90deg,${C.primary},${C.violet})`}}/></div><span style={{fontSize:10,color:C.textMuted,fontWeight:600}}>{cu}/{cd.length}</span></div>
+          <div key={cat} style={{padding:"8px 10px",borderRadius:8,background:C.bg,display:"flex",alignItems:"center",gap:9}}>
+            <div style={{width:24,height:24,borderRadius:7,background:cp===100?C.greenSoft:`rgba(91,107,240,.08)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:10,fontWeight:700,color:cp===100?C.green:C.primary}}>{cn}</span></div>
+            <div style={{flex:1,minWidth:0}}><p style={{fontSize:11,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat}</p>
+              <div style={{display:"flex",alignItems:"center",gap:5,marginTop:2}}><div style={{flex:1,height:3,background:C.border,borderRadius:2}}><div style={{height:"100%",width:`${cp}%`,borderRadius:2,background:cp===100?C.green:`linear-gradient(90deg,${C.primary},${C.violet})`}}/></div><span style={{fontSize:9.5,color:C.textMuted,fontWeight:600}}>{cu}/{cd.length}</span></div>
             </div>
           </div>);})}
       </div>
     </div>
+
+    {/* Agenda + Pagos */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14}}>
-      <div style={{background:C.card,borderRadius:14,padding:"18px",border:`1px solid ${C.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><h3 style={{fontSize:14,fontWeight:600}}>Pendientes</h3><button onClick={()=>setPage("documents")} style={{fontSize:12,color:C.primary,background:"none",fontWeight:500,display:"flex",alignItems:"center",gap:2}}>Ver todos<ChevronRight size={12}/></button></div>
-        {docs.filter(d=>d.status==="pending"&&d.required).slice(0,4).map(d=><div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.bg}`}}><div style={{width:6,height:6,borderRadius:"50%",background:C.red,flexShrink:0}}/><div style={{flex:1,minWidth:0}}><p style={{fontSize:11.5,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.name}</p></div></div>)}
-      </div>
-      <div style={{background:C.card,borderRadius:14,padding:"18px",border:`1px solid ${C.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><h3 style={{fontSize:14,fontWeight:600}}>Agenda</h3><button onClick={()=>setPage("calendar")} style={{fontSize:12,color:C.primary,background:"none",fontWeight:500,display:"flex",alignItems:"center",gap:2}}>Ver todo<ChevronRight size={12}/></button></div>
-        {nextEv.map(ev=>{const s=getEv(ev.type);return(<div key={ev.id} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.bg}`}}>
-          <div style={{width:40,height:40,borderRadius:9,background:s.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:14,fontWeight:700,color:s.c,lineHeight:1}}>{new Date(ev.date).getDate()}</span><span style={{fontSize:8,color:s.c,textTransform:"uppercase",fontWeight:600}}>{new Date(ev.date).toLocaleDateString("es-ES",{month:"short"})}</span></div>
-          <div><p style={{fontSize:12,fontWeight:500}}>{ev.title}</p><p style={{fontSize:10.5,color:C.textMuted}}>{ev.time&&`${ev.time} · `}{s.l}</p></div>
+      <div style={{background:C.card,borderRadius:14,padding:"16px 18px",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><h3 style={{fontSize:13,fontWeight:600}}>Próximos eventos</h3><button onClick={()=>setPage("calendar")} style={{fontSize:11.5,color:C.primary,background:"none",fontWeight:500,display:"flex",alignItems:"center",gap:2}}>Ver todo<ChevronRight size={11}/></button></div>
+        {nextEv.length===0 && <p style={{fontSize:11,color:C.textMuted,padding:"8px 0"}}>No hay eventos próximos</p>}
+        {nextEv.map(ev=>{const s=getEv(ev.type);return(<div key={ev.id} style={{display:"flex",gap:10,padding:"7px 0",borderBottom:`1px solid ${C.bg}`}}>
+          <div style={{width:36,height:36,borderRadius:8,background:s.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:13,fontWeight:700,color:s.c,lineHeight:1}}>{new Date(ev.date).getDate()}</span><span style={{fontSize:7.5,color:s.c,textTransform:"uppercase",fontWeight:600}}>{new Date(ev.date).toLocaleDateString("es-ES",{month:"short"})}</span></div>
+          <div><p style={{fontSize:11.5,fontWeight:500}}>{ev.title}</p><p style={{fontSize:10,color:C.textMuted}}>{ev.time&&`${ev.time} · `}{s.l}</p></div>
         </div>);})}
       </div>
-    </div>
-          {/* Payment widget */}
       {(()=>{const pd=PAYMENTS[user.caseType||'lso'];if(!pd)return null;const paid=pd.payments.filter(p=>p.status==="paid");const totalPaid=paid.reduce((a,p)=>a+p.amount,0);const upc=pd.payments.find(p=>p.status==="upcoming");const days=upc?daysUntil(upc.date):null;const payPct=Math.round(totalPaid/pd.totalContracted*100);return(
-        <div onClick={()=>setPage("payments")} className="hover-lift" style={{cursor:"pointer",background:C.card,borderRadius:14,padding:"18px",border:`1px solid ${C.border}`,marginTop:14,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-          <div style={{width:42,height:42,borderRadius:10,background:`linear-gradient(135deg,${C.primary}15,${C.violet}10)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Wallet size={20} color={C.primary}/></div>
-          <div style={{flex:1,minWidth:180}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:10}}>
-              <p style={{fontSize:13,fontWeight:600}}>Tus pagos</p>
-              <span style={{fontSize:12,fontWeight:700,color:C.primary}}>{payPct}%</span>
-            </div>
-            <div style={{height:6,background:C.bg,borderRadius:3,overflow:"hidden",marginBottom:6}}><div style={{height:"100%",width:`${payPct}%`,background:`linear-gradient(90deg,${C.primary},${C.violet})`,borderRadius:3}}/></div>
-            <p style={{fontSize:11.5,color:C.textMuted}}>{fmtMoney(totalPaid)} pagados de {fmtMoney(pd.totalContracted)}</p>
+        <div onClick={()=>setPage("payments")} className="hover-lift" style={{cursor:"pointer",background:C.card,borderRadius:14,padding:"16px 18px",border:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <div style={{width:34,height:34,borderRadius:9,background:`linear-gradient(135deg,${C.primary}15,${C.violet}10)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Wallet size={16} color={C.primary}/></div>
+            <div style={{flex:1}}><p style={{fontSize:13,fontWeight:600}}>Tus pagos</p><p style={{fontSize:10.5,color:C.textMuted}}>{paid.length}/{pd.payments.length} cuotas</p></div>
+            <span style={{fontSize:13,fontWeight:700,color:C.primary}}>{payPct}%</span>
           </div>
-          {upc&&<div style={{padding:"8px 12px",borderRadius:8,background:days<=3?C.orangeSoft:C.tealSoft,fontSize:11,fontWeight:600,color:days<=3?C.orange:C.teal,whiteSpace:"nowrap"}}>{days===0?"Cargo hoy":days===1?"Cargo mañana":`Cargo en ${days}d`}</div>}
-          <ChevronRight size={16} color={C.textMuted}/>
+          <div style={{height:5,background:C.bg,borderRadius:3,overflow:"hidden",marginBottom:7}}><div style={{height:"100%",width:`${payPct}%`,background:`linear-gradient(90deg,${C.primary},${C.violet})`,borderRadius:3}}/></div>
+          <p style={{fontSize:10.5,color:C.textMuted}}>{fmtMoney(totalPaid)} de {fmtMoney(pd.totalContracted)}</p>
+          {upc&&<div style={{marginTop:7,padding:"6px 9px",borderRadius:6,background:days<=3?C.orangeSoft:C.tealSoft,fontSize:10.5,fontWeight:600,color:days<=3?C.orange:C.teal,textAlign:"center"}}>{days===0?"Cargo hoy":days===1?"Cargo mañana":`Próximo cargo en ${days} días`}</div>}
         </div>
       );})()}
-      <div style={{display:"flex",gap:8,marginTop:18,flexWrap:"wrap"}}>
-      {[{l:"Subir documento",i:Upload,fn:()=>setPage("documents"),p:true},{l:"Asistente IA",i:MessageSquare,fn:()=>setPage("chat")},{l:"Ver expediente",i:BarChart3,fn:()=>setPage("timeline")}].map((b,i)=><button key={i} onClick={b.fn} className="hover-lift" style={{display:"flex",alignItems:"center",gap:7,padding:"11px 18px",borderRadius:10,background:b.p?`linear-gradient(135deg,${C.primary},${C.violet})`:C.card,color:b.p?"#fff":C.text,fontSize:12.5,fontWeight:600,border:b.p?"none":`1px solid ${C.border}`}}><b.i size={14}/>{b.l}</button>)}
     </div>
   </div>);
 }
 
 // ════ DOCUMENTS ════
 function Documents({docs,cats,onFileSelected,onScan,pct,firstName}){
-  const[filter,setFilter]=useState("all");const[expDoc,setExpDoc]=useState(null);const[expCats,setExpCats]=useState(new Set(cats));const fRef=useRef(null);
+  const[filter,setFilter]=useState("all");
+  const[expCats,setExpCats]=useState(new Set(cats));
+  const fRef=useRef(null);
+  const [activeUpload, setActiveUpload] = useState(null);
+
   const filtered=filter==="all"?docs:filter==="pending"?docs.filter(d=>d.status==="pending"||d.status==="partial"):docs.filter(d=>d.status==="uploaded"||d.status==="review");
   const up=docs.filter(d=>d.status==="uploaded"||d.status==="review").length;
-  function hf(e){const f=e.target.files?.[0];if(f&&expDoc){onFileSelected(expDoc,f);setExpDoc(null);e.target.value="";}}
+
+  function hf(e){const f=e.target.files?.[0];if(f&&activeUpload){onFileSelected(activeUpload,f);setActiveUpload(null);e.target.value="";}}
   function tCat(c){setExpCats(p=>{const n=new Set(p);n.has(c)?n.delete(c):n.add(c);return n;});}
+  function triggerUpload(docId, mode) {
+    setActiveUpload(docId);
+    if (mode === "camera") fRef.current?.setAttribute("capture", "environment");
+    else fRef.current?.removeAttribute("capture");
+    setTimeout(() => fRef.current?.click(), 50);
+  }
+
   const groups=cats.map(c=>({cat:c,catNum:docs.find(d=>d.cat===c)?.catNum,docs:filtered.filter(d=>d.cat===c)})).filter(g=>g.docs.length>0);
 
   return(<div>
     <input ref={fRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{display:"none"}} onChange={hf}/>
-    <div style={{background:`linear-gradient(135deg,rgba(91,107,240,.06),rgba(124,91,240,.04))`,borderRadius:12,padding:"14px 18px",marginBottom:14,border:`1px solid ${C.primary}20`,display:"flex",alignItems:"center",gap:10}}>
-      <div style={{width:34,height:34,borderRadius:9,background:`linear-gradient(135deg,${C.primary},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Sparkles size={16} color="#fff"/></div>
-      <div><p style={{fontSize:12.5,fontWeight:600}}>Verificación con IA activada</p><p style={{fontSize:11,color:C.textMuted}}>Cada documento que subas se verifica automáticamente</p></div>
+
+    {/* Banner IA */}
+    <div style={{background:`linear-gradient(135deg,rgba(91,107,240,.06),rgba(124,91,240,.04))`,borderRadius:12,padding:"12px 16px",marginBottom:10,border:`1px solid ${C.primary}20`,display:"flex",alignItems:"center",gap:10}}>
+      <div style={{width:30,height:30,borderRadius:8,background:`linear-gradient(135deg,${C.primary},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Sparkles size={14} color="#fff"/></div>
+      <div style={{flex:1, minWidth:0}}><p style={{fontSize:12,fontWeight:600}}>Verificación con IA activada</p><p style={{fontSize:10.5,color:C.textMuted}}>Cada documento se verifica automáticamente al subirlo</p></div>
     </div>
-    <div style={{background:C.card,borderRadius:12,padding:"14px 18px",marginBottom:14,border:`1px solid ${C.border}`}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:12,fontWeight:600}}>Progreso</span><span style={{fontSize:12,fontWeight:700,color:C.primary}}>{pct}%</span></div>
+
+    {/* Carlota CTA */}
+    <div onClick={() => window.dispatchEvent(new CustomEvent('open-carlota'))} className="hover-lift" style={{cursor:"pointer", background:C.sidebar, borderRadius:12, padding:"12px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:12, border:"none"}}>
+      <div style={{width:32, height:32, borderRadius:9, background:`linear-gradient(135deg, ${C.primary}, ${C.violet})`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0}}>
+        <Sparkles size={15} color="#fff"/>
+      </div>
+      <div style={{flex:1, minWidth:0}}>
+        <p style={{fontSize:12.5, fontWeight:600, color:"#fff"}}>Carlota está aquí para ayudarte</p>
+        <p style={{fontSize:10.5, color:"rgba(255,255,255,0.6)", marginTop:1}}>Dónde conseguir cualquier documento, plazos, dudas legales...</p>
+      </div>
+      <button style={{padding:"7px 11px", borderRadius:7, background:"rgba(255,255,255,0.15)", color:"#fff", fontSize:11, fontWeight:600, display:"flex", alignItems:"center", gap:4, whiteSpace:"nowrap", flexShrink:0}}>
+        Hablar <ChevronRight size={11}/>
+      </button>
+    </div>
+
+    {/* Progress */}
+    <div style={{background:C.card,borderRadius:12,padding:"12px 16px",marginBottom:12,border:`1px solid ${C.border}`}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:12,fontWeight:600}}>Progreso global</span><span style={{fontSize:12,fontWeight:700,color:C.primary}}>{pct}%</span></div>
       <div style={{height:6,background:C.bg,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,borderRadius:3,background:`linear-gradient(90deg,${C.primary},${C.violet})`}}/></div>
     </div>
+
+    {/* Filtros */}
     <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
       {[{k:"all",l:`Todos (${docs.length})`},{k:"pending",l:`Pendientes (${docs.filter(d=>d.status==="pending").length})`},{k:"done",l:`Entregados (${up})`}].map(f=><button key={f.k} onClick={()=>setFilter(f.k)} style={{padding:"6px 14px",borderRadius:8,fontSize:12,fontWeight:500,background:filter===f.k?`linear-gradient(135deg,${C.primary},${C.violet})`:C.card,color:filter===f.k?"#fff":C.text,border:`1px solid ${filter===f.k?"transparent":C.border}`}}>{f.l}</button>)}
     </div>
+
+    {/* Categorías */}
     {groups.map(g=>{const o=expCats.has(g.cat);const cu=g.docs.filter(d=>d.status==="uploaded"||d.status==="review").length;const total=docs.filter(d=>d.cat===g.cat).length;const cp=Math.round(cu/total*100);return(
       <div key={g.cat} style={{marginBottom:10}}>
         <button onClick={()=>tCat(g.cat)} style={{width:"100%",display:"flex",alignItems:"center",gap:9,padding:"12px 14px",background:C.card,borderRadius:o?"12px 12px 0 0":12,border:`1px solid ${C.border}`,borderBottom:o?"none":`1px solid ${C.border}`,textAlign:"left"}}>
@@ -450,29 +614,48 @@ function Documents({docs,cats,onFileSelected,onScan,pct,firstName}){
           {o?<ChevronUp size={15} color={C.textMuted}/>:<ChevronDown size={15} color={C.textMuted}/>}
         </button>
         {o&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 12px 12px",overflow:"hidden"}}>
-          {g.docs.map(doc=>{const inf=getS(doc.status);const Ic=inf.i;const isE=expDoc===doc.id;const hasKB = !!KB[doc.id];return(
-            <div key={doc.id} style={{borderBottom:`1px solid ${C.bg}`}}>
-              <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:10,background:C.card}}>
-                <Ic size={16} color={inf.c} style={{flexShrink:0}}/>
-                <div style={{flex:1,minWidth:0}}>
+          {g.docs.map(doc=>{const inf=getS(doc.status);const Ic=inf.i;const hasKB = !!KB[doc.id];const isPending = doc.status==="pending"||doc.status==="partial";const guide = KB[doc.id]?.whereToGet || CATEGORY_GUIDES[doc.cat] || "Tu letrado te indicará dónde conseguirlo.";return(
+            <div key={doc.id} style={{borderBottom:`1px solid ${C.bg}`,padding:"12px 16px",background:C.card}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+                <Ic size={16} color={inf.c} style={{flexShrink:0,marginTop:2}}/>
+                <div style={{flex:1,minWidth:200}}>
                   <p style={{fontSize:12.5,fontWeight:500}}>{doc.name}</p>
-                  <div style={{display:"flex",alignItems:"center",gap:5,marginTop:2,flexWrap:"wrap"}}>
-                    <span style={{fontSize:10,color:inf.c,fontWeight:500}}>{inf.l}</span>
-                    {hasKB && <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:9.5,color:C.primary,background:`rgba(91,107,240,.08)`,padding:"1px 6px",borderRadius:3,fontWeight:500}}><Sparkles size={9}/> IA</span>}
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginTop:3,flexWrap:"wrap"}}>
+                    <span style={{fontSize:10,color:inf.c,fontWeight:600}}>{inf.l}</span>
+                    {hasKB && <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:9.5,color:C.primary,background:`rgba(91,107,240,.08)`,padding:"1px 6px",borderRadius:3,fontWeight:500}}><Sparkles size={9}/> IA verifica</span>}
                     {!doc.required&&<span style={{fontSize:9,color:C.textMuted,background:C.bg,padding:"1px 5px",borderRadius:3}}>Opcional</span>}
                     {doc.uploadedAt&&<span style={{fontSize:10,color:C.textMuted}}>· {fmtD(doc.uploadedAt)}</span>}
                   </div>
-                  {doc.warn&&<p style={{fontSize:10.5,color:C.orange,marginTop:2,display:"flex",alignItems:"flex-start",gap:3}}><FileWarning size={11} style={{flexShrink:0,marginTop:1}}/>{doc.warn}</p>}
-                  {doc.note&&<p style={{fontSize:10.5,color:doc.note.includes("Verificado")?C.green:C.blue,marginTop:2,fontStyle:"italic"}}>{doc.note}</p>}
+                  {doc.warn&&<p style={{fontSize:10.5,color:C.orange,marginTop:4,display:"flex",alignItems:"flex-start",gap:3}}><FileWarning size={11} style={{flexShrink:0,marginTop:1}}/>{doc.warn}</p>}
+                  {doc.note&&<p style={{fontSize:10.5,color:doc.note.includes("Verificado")?C.green:C.blue,marginTop:4,fontStyle:"italic"}}>{doc.note}</p>}
                 </div>
-                {(doc.status==="pending"||doc.status==="partial")&&<button onClick={()=>setExpDoc(isE?null:doc.id)} style={{padding:"7px 14px",borderRadius:8,fontSize:11,fontWeight:600,background:isE?C.sidebar:`linear-gradient(135deg,${C.primary},${C.violet})`,color:"#fff",display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>{isE?<X size={11}/>:<Upload size={11}/>}{isE?"Cerrar":"Subir"}</button>}
+                {isPending && (
+                  <div style={{display:"flex",gap:5,flexShrink:0}}>
+                    <button onClick={()=>triggerUpload(doc.id, "file")} title="Adjuntar archivo" style={{padding:"7px 11px",borderRadius:7,background:`linear-gradient(135deg,${C.primary},${C.violet})`,color:"#fff",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+                      <Paperclip size={11}/>Subir
+                    </button>
+                    <button onClick={()=>triggerUpload(doc.id, "camera")} title="Hacer foto" style={{padding:"7px 9px",borderRadius:7,background:C.tealSoft,color:C.teal,fontSize:11,fontWeight:600,border:`1px solid ${C.teal}30`}}>
+                      <Camera size={11}/>
+                    </button>
+                    <button onClick={()=>onScan(doc.id)} title="Escanear" style={{padding:"7px 9px",borderRadius:7,background:`rgba(124,91,240,0.08)`,color:C.violet,fontSize:11,fontWeight:600,border:`1px solid ${C.violet}30`}}>
+                      <ScanLine size={11}/>
+                    </button>
+                  </div>
+                )}
               </div>
-              {isE&&(doc.status==="pending"||doc.status==="partial")&&<div style={{padding:"12px 16px",background:C.bg,animation:"fadeIn .2s ease"}}>
-                {hasKB && <div style={{padding:"8px 10px",background:`rgba(91,191,160,.08)`,borderRadius:6,marginBottom:10,fontSize:11,color:C.text,display:"flex",gap:6,alignItems:"flex-start"}}><Sparkles size={12} color={C.teal} style={{flexShrink:0,marginTop:1}}/><span>💡 <strong>{KB[doc.id].whereToGet}</strong></span></div>}
-                <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-                  {[{icon:Paperclip,label:"Adjuntar",sub:"PDF, Word, Excel",c:C.primary,fn:()=>fRef.current?.click()},{icon:Camera,label:"Foto",sub:"Cámara",c:C.teal,fn:()=>{fRef.current?.setAttribute("capture","environment");fRef.current?.click();}},{icon:ScanLine,label:"Escanear",sub:"CamScanner",c:C.violet,fn:()=>{onScan(doc.id);setExpDoc(null);}}].map((o,i)=><button key={i} onClick={o.fn} style={{flex:1,minWidth:100,display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"12px 8px",borderRadius:10,background:C.card,border:`1.5px dashed ${C.border}`,color:C.text,transition:".2s"}}><o.icon size={16} color={o.c}/><span style={{fontSize:11,fontWeight:500}}>{o.label}</span><span style={{fontSize:9.5,color:C.textMuted}}>{o.sub}</span></button>)}
+              {/* Mini-guía siempre visible para pendientes */}
+              {isPending && (
+                <div style={{marginTop:8, marginLeft:26, padding:"7px 10px", background:`rgba(91,191,160,.06)`, borderRadius:7, fontSize:10.5, color:C.text, lineHeight:1.4, display:"flex", gap:6, alignItems:"flex-start"}}>
+                  <span style={{flexShrink:0}}>💡</span>
+                  <span>{guide}</span>
                 </div>
-              </div>}
+              )}
+              {/* CTA Carlota contextual */}
+              {isPending && (
+                <button onClick={()=>window.dispatchEvent(new CustomEvent('open-carlota', {detail:{message:`Necesito ayuda para conseguir o entender el documento: ${doc.name}`}}))} style={{marginTop:6, marginLeft:26, fontSize:10.5, color:C.primary, background:"none", padding:0, display:"inline-flex", alignItems:"center", gap:4, fontWeight:500}}>
+                  <Sparkles size={10}/> ¿Dudas con este documento? Pregúntale a Carlota
+                </button>
+              )}
             </div>);})}
         </div>}
       </div>);})}
