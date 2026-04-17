@@ -886,12 +886,44 @@ function Chat({messages,setMessages,docs,user,caseLabel}){
   const payCtx = payData ? `\nPAGOS:\nTotal contratado: ${fmtMoney(payData.totalContracted)}, Pagados: ${payData.payments.filter(p=>p.status==="paid").length}/${payData.payments.length}, Método: ${methodInfo[payData.method].label}, Próximo pago: ${(()=>{const u=payData.payments.find(p=>p.status==="upcoming");return u?`${fmtMoney(u.amount)} el ${u.date}`:"ninguno"})()}`:"";
   const docCtx=docs.map(d=>`- [${d.status==="pending"?"PENDIENTE":d.status==="uploaded"?"VERIFICADO":"EN REVISIÓN"}] ${d.name} (${d.cat})${d.warn?` ⚠ ${d.warn}`:""}${!d.required?" [opcional]":""}`).join("\n");
   async function send(){
-    if(!input.trim()||ld)return;const msg=input.trim();setInput("");setMessages(p=>[...p,{role:"user",content:msg}]);setLd(true);
-    try{const sys=`Eres el asistente documental de LibreApp. Cliente: ${user.full_name || user.name || ''} | Exp: ${user.caseId || 'N/A'} | Procedimiento: ${caseLabel} | Letrado: ${user.lawyer || 'Sin asignar'}\nDOCUMENTACIÓN:\n${docCtx}${payCtx}\nAyuda con documentos, sedes electrónicas (AEAT, TGSS, CIRBE, empadronamiento, antecedentes penales). Español de España, cercano, tutea, mensajes concisos.`;
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[...messages.slice(-10),{role:"user",content:msg}].map(m=>({role:m.role,content:m.content}))})});
-      const data=await res.json();const reply=data.content?.map(b=>b.text||"").join("")||"Error, ¿puedes repetir?";
-      setMessages(p=>[...p,{role:"assistant",content:reply}]);
-    }catch{setMessages(p=>[...p,{role:"assistant",content:"Error de conexión."}]);}setLd(false);}
+    if(!input.trim()||ld)return;
+    const msg=input.trim();
+    setInput("");
+    setMessages(p=>[...p,{role:"user",content:msg}]);
+    setLd(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const firstName = (user.full_name || user.name || '').split(" ")[0] || "cliente";
+      const apiMessages = [...messages.slice(-10), { role: "user", content: msg }].map(m => ({ role: m.role, content: m.content }));
+      const contextNote = `\n\nContexto extra del cliente (usa solo si es relevante): Exp ${user.caseId || 'N/A'} · ${caseLabel} · Letrado: ${user.lawyer || 'Sin asignar'}.\nDocumentos:\n${docCtx}${payCtx}`;
+      const messagesWithContext = apiMessages.length === 1
+        ? [{ role: "user", content: msg + contextNote }]
+        : apiMessages;
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/carlota-chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+        body: JSON.stringify({
+          messages: messagesWithContext,
+          userRole: user.role || "client",
+          currentModule: "lexdocs",
+          firstName,
+          currentContext: { caseId: user.caseId, caseType: user.caseType || 'lso' },
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.reply) {
+        setMessages(p => [...p, { role: "assistant", content: data.reply }]);
+      } else {
+        setMessages(p => [...p, { role: "assistant", content: "Disculpa, no he podido procesar tu pregunta. Inténtalo de nuevo en unos segundos." }]);
+      }
+    } catch (e) {
+      console.error("Chat error:", e);
+      setMessages(p => [...p, { role: "assistant", content: "Error de conexión. Revisa tu internet e inténtalo de nuevo." }]);
+    }
+    setLd(false);
+  }
 
   const qQ=(user.caseType||'lso')==="concurso"?["¿Qué me falta?","¿Cómo consigo el CIRBE?","¿Formato Lexnet?","¿Plazo?"]:["¿Qué me falta?","¿Dónde saco empadronamiento?","¿Antecedentes penales?","¿Mi próximo plazo?"];
 
