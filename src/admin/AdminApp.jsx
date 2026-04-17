@@ -24,11 +24,11 @@ export default function AdminApp({ user, onLogout }) {
   const [cases, setCases] = useState([]);
   const [casesLoading, setCasesLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadCases() {
-      const { data: casesData } = await supabase
-        .from('cases')
-        .select('*, contact:contacts(first_name, last_name, email, company), lawyer:users!cases_assigned_lawyer_id_fkey(full_name, professional_title, colegio, colegiado_num), procurador:users!cases_assigned_procurador_id_fkey(full_name, professional_title, colegio, colegiado_num)');
+  async function loadCases() {
+    setCasesLoading(true);
+    const { data: casesData } = await supabase
+      .from('cases')
+      .select('*, contact:contacts(first_name, last_name, email, company), lawyer:users!cases_assigned_lawyer_id_fkey(full_name, professional_title, colegio, colegiado_num), procurador:users!cases_assigned_procurador_id_fkey(full_name, professional_title, colegio, colegiado_num)');
 
       // Also get document stats and payment stats
       const { data: docs } = await supabase.from('documents').select('case_id, status');
@@ -71,8 +71,8 @@ export default function AdminApp({ user, onLogout }) {
       setCases(enrichedCases);
       setCasesLoading(false);
     }
-    loadCases();
-  }, []);
+
+  useEffect(() => { loadCases(); }, []);
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -263,7 +263,7 @@ export default function AdminApp({ user, onLogout }) {
 
         <div className="fade-in" key={page === "settings" ? `settings-${settingsTab}` : page}>
           {page === "dashboard" && <AdminDashboard cases={cases} setPage={setPage} />}
-          {page === "cases" && <AdminCaseList cases={cases} />}
+          {page === "cases" && <AdminCaseList cases={cases} onRefresh={loadCases} />}
           {page === "contacts" && <ContactList setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "pipeline" && <ContactPipeline setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "lexconsulta" && <SearchView />}

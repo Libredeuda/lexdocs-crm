@@ -3,6 +3,7 @@ import { Upload, Camera, FileText, CheckCircle, Clock, AlertCircle, Calendar, Me
 import { LOGO, font, C, KB, DOCS_LSO, DOCS_CONCURSO, EVENTS_LSO, EVENTS_CONC, PAYMENTS, methodInfo } from "../constants";
 import { statusMap, getS, evSt, getEv, fmtD, fmtMoney, daysUntil, payStatusMap, getPayStatus, motivMsg } from "../utils";
 import Carlota from "../components/Carlota";
+import Messages from "./Messages";
 import { supabase } from "../lib/supabase";
 
 // Verificación documental con Claude Vision via Supabase Edge Function
@@ -210,7 +211,7 @@ export default function ClientApp({ user, onLogout }) {
     setVerifyResult(null);
   }
 
-  const navItems = [{ id: "dashboard", label: "Inicio", icon: Home }, { id: "documents", label: "Documentos", icon: FolderOpen, badge: pendingReq }, { id: "timeline", label: "Mi expediente", icon: BarChart3 }, { id: "calendar", label: "Agenda", icon: Calendar }, { id: "payments", label: "Pagos", icon: Wallet }, { id: "chat", label: "Asistente IA", icon: MessageSquare }];
+  const navItems = [{ id: "dashboard", label: "Inicio", icon: Home }, { id: "documents", label: "Documentos", icon: FolderOpen, badge: pendingReq }, { id: "timeline", label: "Mi expediente", icon: BarChart3 }, { id: "calendar", label: "Agenda", icon: Calendar }, { id: "messages", label: "Mi abogado", icon: Scale }, { id: "payments", label: "Pagos", icon: Wallet }, { id: "chat", label: "Asistente IA", icon: MessageSquare }];
   const caseLabel = caseType === "concurso" ? "Concurso de Acreedores" : "Ley de Segunda Oportunidad";
 
   return (
@@ -260,7 +261,7 @@ export default function ClientApp({ user, onLogout }) {
 
       <main className="mc" style={{ marginLeft: 260, flex: 1, padding: "24px 30px", minHeight: "100vh" }}>
         <div style={{ marginBottom: 22 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em" }}>{page === "dashboard" && `Hola, ${firstName}`}{page === "documents" && "Gestión documental"}{page === "timeline" && "Mi expediente"}{page === "calendar" && "Agenda"}{page === "payments" && "Mis pagos"}{page === "chat" && "Asistente documental"}</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em" }}>{page === "dashboard" && `Hola, ${firstName}`}{page === "documents" && "Gestión documental"}{page === "timeline" && "Mi expediente"}{page === "calendar" && "Agenda"}{page === "messages" && "Mi abogado"}{page === "payments" && "Mis pagos"}{page === "chat" && "Asistente documental"}</h1>
           <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{caseLabel} · Exp. {caseId}</p>
         </div>
 
@@ -280,6 +281,7 @@ export default function ClientApp({ user, onLogout }) {
           {page === "timeline" && <Timeline docs={docs} cats={cats} pct={pct} user={user} caseLabel={caseLabel} />}
           {page === "calendar" && <Cal events={events} />}
           {page === "payments" && <Payments user={user} firstName={firstName} />}
+          {page === "messages" && <Messages user={user} firstName={firstName} />}
           {page === "chat" && <Chat messages={chatMsgs} setMessages={setChatMsgs} docs={docs} user={user} caseLabel={caseLabel} />}
         </div>
       </main>

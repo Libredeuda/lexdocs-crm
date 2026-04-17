@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Search, Filter, AlertCircle, Clock, FileText, Building2, User, ChevronRight, Eye } from "lucide-react";
+import { Search, Filter, AlertCircle, Clock, FileText, Building2, User, ChevronRight, Eye, UserCheck } from "lucide-react";
 import { C, font } from "../constants";
 import { fmtMoney, daysUntil, fmtD } from "../utils";
+import AssignCaseModal from "./AssignCaseModal";
 
-export default function AdminCaseList({ cases }) {
+export default function AdminCaseList({ cases, onRefresh }) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all"); // all, lso, concurso
   const [toast, setToast] = useState(null);
+  const [assigningCase, setAssigningCase] = useState(null);
 
   const filtered = cases.filter(c => {
     const matchesSearch = !search || c.client.name.toLowerCase().includes(search.toLowerCase()) || c.client.caseId.toLowerCase().includes(search.toLowerCase());
@@ -65,7 +67,7 @@ export default function AdminCaseList({ cases }) {
           return (
             <button
               key={i}
-              onClick={() => showToast("Detalle de expediente — Próximamente (Fase A5)")}
+              onClick={() => setAssigningCase(c)}
               style={{
                 display: "grid", gridTemplateColumns: "2fr 1fr 1fr 120px 1fr 80px", gap: 8,
                 padding: "14px 18px", borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none",
@@ -143,6 +145,14 @@ export default function AdminCaseList({ cases }) {
           </div>
         )}
       </div>
+
+      {assigningCase && (
+        <AssignCaseModal
+          caseData={assigningCase}
+          onClose={() => setAssigningCase(null)}
+          onSaved={() => { setAssigningCase(null); if (onRefresh) onRefresh(); }}
+        />
+      )}
     </div>
   );
 }
