@@ -62,12 +62,11 @@ export default function Integrations() {
     {
       id: "whatsapp",
       name: "WhatsApp Business",
-      desc: "Recibe mensajes entrantes en WhatsApp como leads (próximamente).",
+      desc: "Envía notificaciones a tu equipo y recibe mensajes entrantes como leads (Meta Cloud API).",
       icon: MessageCircle,
       color: "#25d366",
       bg: "rgba(37,211,102,0.08)",
-      status: "Próximamente",
-      disabled: true,
+      status: "Listo para conectar",
     },
   ];
 
@@ -141,7 +140,76 @@ export default function Integrations() {
       {active === "api" && (
         <ApiIntegration apiBase={apiBase} copy={copy} copied={copied} />
       )}
+      {active === "whatsapp" && (
+        <WhatsAppIntegration tenantSlug={tenantSlug} verifyToken={verifyToken} copy={copy} copied={copied} />
+      )}
     </div>
+  );
+}
+
+// ════════════ WHATSAPP BUSINESS ════════════
+function WhatsAppIntegration({ tenantSlug, verifyToken, copy, copied }) {
+  const incomingWebhookUrl = `${SUPABASE_URL}/functions/v1/webhook-whatsapp?tenant_slug=${tenantSlug}`;
+  return (
+    <div style={{ background: C.card, borderRadius: 14, padding: "24px 28px", border: `2px solid #25d36630` }}>
+      <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+        <MessageCircle size={18} color="#25d366" /> WhatsApp Business
+      </h3>
+      <p style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 22, lineHeight: 1.6 }}>
+        Conecta WhatsApp Business Cloud API (Meta) para 2 cosas:<br/>
+        1) <strong>Enviar notificaciones</strong> a abogados y procuradores cuando se les asigna un caso o llega un mensaje del cliente.<br/>
+        2) <strong>Recibir mensajes entrantes</strong> de potenciales clientes y crearlos como leads automáticamente en el CRM.
+      </p>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 22 }}>
+        <Badge color="#22c55e">✓ Notificaciones de salida activas</Badge>
+        <Badge color="#f59e0b">⏳ Webhook entrante: pendiente de configurar en Meta</Badge>
+      </div>
+
+      <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, marginTop: 8, color: C.text }}>📤 Notificaciones de salida (ya configurado)</h4>
+      <p style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 14, lineHeight: 1.6 }}>
+        Cuando asignas un caso a un abogado o procurador, o cuando un cliente envía un mensaje desde la app, se envía un WhatsApp con plantilla aprobada. Asegúrate de que cada miembro del equipo tenga su número de WhatsApp en <a style={{ color: C.primary }} href="#">Configuración → Equipo</a>.
+      </p>
+
+      <div style={{ background: "rgba(37,211,102,0.06)", borderRadius: 10, padding: "14px 16px", marginBottom: 24, fontSize: 12, color: C.text, lineHeight: 1.6 }}>
+        <p style={{ fontWeight: 600, marginBottom: 6 }}>Plantillas necesarias en Meta:</p>
+        <ul style={{ paddingLeft: 18, margin: 0 }}>
+          <li><code style={inlineCode}>case_assignment</code> · variables: nombre profesional, cliente, expediente</li>
+          <li><code style={inlineCode}>new_message</code> · variables: nombre profesional, cliente, preview mensaje</li>
+        </ul>
+        <p style={{ marginTop: 8, fontSize: 11.5, color: C.textMuted }}>Crea las plantillas en <a style={{ color: C.primary }} href="https://business.facebook.com/wa/manage/message-templates" target="_blank" rel="noreferrer">business.facebook.com/wa/manage/message-templates</a> con categoría <strong>Utility</strong>. Aprobación: 5-30 min.</p>
+      </div>
+
+      <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: C.text }}>📥 Recibir mensajes entrantes como leads</h4>
+      <p style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 18, lineHeight: 1.6 }}>
+        Conecta el webhook para que cuando alguien escriba a tu número de WhatsApp Business, se cree automáticamente como contacto/lead en el CRM (con el mensaje guardado en notas).
+      </p>
+
+      <Step number={1} title="Crea credenciales en Meta for Developers">
+        <p>Ve a <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer" style={{ color: C.primary }}>developers.facebook.com/apps</a> → tu app → producto <strong>WhatsApp</strong>.</p>
+        <p style={{ marginTop: 6 }}>Necesitas: <strong>Phone Number ID</strong>, <strong>Access Token</strong> permanente (vía System User) y <strong>App Secret</strong>.</p>
+      </Step>
+
+      <Step number={2} title="Configura el webhook entrante">
+        <p>En Meta → tu app → <strong>Webhooks</strong> → producto <strong>WhatsApp Business Account</strong> → Suscribirse a <code style={inlineCode}>messages</code>.</p>
+        <CopyField label="URL de devolución de llamada" value={incomingWebhookUrl} copy={copy} copied={copied} field="wabUrl" />
+        <CopyField label="Token de verificación" value={verifyToken} copy={copy} copied={copied} field="wabToken" />
+      </Step>
+
+      <Step number={3} title="Prueba el flujo">
+        <p>Envía un mensaje desde un móvil personal a tu número de WhatsApp Business. Aparecerá como contacto nuevo en <strong>Contactos</strong> con fuente <strong>WhatsApp</strong> y el mensaje en notas.</p>
+      </Step>
+
+      <Note color="#25d366">
+        <strong>Datos del equipo:</strong> los teléfonos WhatsApp internos del equipo nunca se muestran a los clientes. Solo se usan para enviar notificaciones automáticas. El cliente solo se comunica vía la pestaña <strong>"Mi abogado"</strong> de la plataforma.
+      </Note>
+    </div>
+  );
+}
+
+function Badge({ children, color }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", padding: "5px 11px", borderRadius: 7, background: `${color}15`, color, fontSize: 11, fontWeight: 600 }}>{children}</span>
   );
 }
 
