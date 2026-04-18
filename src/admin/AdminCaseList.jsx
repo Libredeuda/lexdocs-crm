@@ -3,12 +3,14 @@ import { Search, Filter, AlertCircle, Clock, FileText, Building2, User, ChevronR
 import { C, font } from "../constants";
 import { fmtMoney, daysUntil, fmtD } from "../utils";
 import AssignCaseModal from "./AssignCaseModal";
+import CaseDocuments from "./cases/CaseDocuments";
 
 export default function AdminCaseList({ cases, onRefresh }) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all"); // all, lso, concurso
   const [toast, setToast] = useState(null);
   const [assigningCase, setAssigningCase] = useState(null);
+  const [reviewingCase, setReviewingCase] = useState(null);
 
   const filtered = cases.filter(c => {
     const matchesSearch = !search || c.client.name.toLowerCase().includes(search.toLowerCase()) || c.client.caseId.toLowerCase().includes(search.toLowerCase());
@@ -67,7 +69,7 @@ export default function AdminCaseList({ cases, onRefresh }) {
           return (
             <button
               key={i}
-              onClick={() => setAssigningCase(c)}
+              onClick={() => setReviewingCase(c)}
               style={{
                 display: "grid", gridTemplateColumns: "2fr 1fr 1fr 120px 1fr 80px", gap: 8,
                 padding: "14px 18px", borderBottom: i < filtered.length - 1 ? `1px solid ${C.bg}` : "none",
@@ -130,9 +132,26 @@ export default function AdminCaseList({ cases, onRefresh }) {
                 )}
               </div>
 
-              {/* Arrow */}
-              <div style={{ textAlign: "right" }}>
-                <ChevronRight size={16} color={C.textMuted} />
+              {/* Actions */}
+              <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); setReviewingCase(c); }}
+                  title="Revisar documentos"
+                  style={{ padding: "6px 10px", borderRadius: 7, background: `linear-gradient(135deg, ${C.primary}, ${C.violet})`, color: "#fff", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer" }}
+                >
+                  <FileText size={11} /> Docs
+                </span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); setAssigningCase(c); }}
+                  title="Asignar equipo"
+                  style={{ padding: "6px 10px", borderRadius: 7, background: C.card, color: C.text, fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", border: `1px solid ${C.border}` }}
+                >
+                  <UserCheck size={11} /> Equipo
+                </span>
               </div>
             </button>
           );
@@ -151,6 +170,15 @@ export default function AdminCaseList({ cases, onRefresh }) {
           caseData={assigningCase}
           onClose={() => setAssigningCase(null)}
           onSaved={() => { setAssigningCase(null); if (onRefresh) onRefresh(); }}
+        />
+      )}
+
+      {reviewingCase && (
+        <CaseDocuments
+          caseId={reviewingCase.id}
+          caseNumber={reviewingCase.case_number || reviewingCase.client?.caseId}
+          clientName={reviewingCase.client?.name || "Cliente"}
+          onClose={() => { setReviewingCase(null); if (onRefresh) onRefresh(); }}
         />
       )}
     </div>

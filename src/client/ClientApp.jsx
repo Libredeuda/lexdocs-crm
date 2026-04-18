@@ -3,6 +3,8 @@ import { Upload, Camera, FileText, CheckCircle, Clock, AlertCircle, Calendar, Me
 import { LOGO, font, C, KB, DOCS_LSO, DOCS_CONCURSO, EVENTS_LSO, EVENTS_CONC, PAYMENTS, methodInfo } from "../constants";
 import { statusMap, getS, evSt, getEv, fmtD, fmtMoney, daysUntil, payStatusMap, getPayStatus, motivMsg } from "../utils";
 import Carlota from "../components/Carlota";
+import CaseRoadmap from "../components/CaseRoadmap";
+import MilestoneModal from "../components/MilestoneModal";
 import Messages from "./Messages";
 import { supabase } from "../lib/supabase";
 
@@ -106,6 +108,8 @@ export default function ClientApp({ user, onLogout }) {
   const [toast, setToast] = useState(null);
   const [verifying, setVerifying] = useState(null);
   const [verifyResult, setVerifyResult] = useState(null);
+  const [caseInfo, setCaseInfo] = useState(null);
+  const [milestoneToShow, setMilestoneToShow] = useState(null);
 
   const caseType = user.caseType || 'lso';
   const caseId = user.caseId || 'N/A';
@@ -123,6 +127,7 @@ export default function ClientApp({ user, onLogout }) {
             .limit(1);
 
           const currentCase = cases?.[0];
+          if (currentCase) setCaseInfo(currentCase);
 
           if (currentCase) {
             const { data: docTypes } = await supabase
@@ -186,6 +191,21 @@ export default function ClientApp({ user, onLogout }) {
 
   const up = docs.filter(d => d.status === "uploaded" || d.status === "review").length;
   const pct = docs.length ? Math.round(up / docs.length * 100) : 0;
+
+  // Detecta hitos de progreso (25/50/75/100) y muestra modal una sola vez por hito
+  useEffect(() => {
+    if (!caseInfo?.id) return;
+    if (milestoneToShow) return;
+    const shown = caseInfo.milestone_shown || {};
+    const thresholds = [25, 50, 75, 100];
+    for (const m of thresholds) {
+      if (pct >= m && !shown[m]) {
+        setMilestoneToShow(m);
+        break;
+      }
+    }
+  }, [pct, caseInfo, milestoneToShow]);
+
   const cats = [...new Set(docs.map(d => d.cat))];
   const pendingReq = docs.filter(d => d.status === "pending" && d.required).length;
   const firstName = fullName.split(" ")[0] || "";
@@ -223,6 +243,19 @@ export default function ClientApp({ user, onLogout }) {
       {toast && <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: C.sidebar, color: "#fff", padding: "12px 24px", borderRadius: 12, fontSize: 13, fontWeight: 500, zIndex: 999, animation: "slideUp .3s ease", boxShadow: "0 8px 30px rgba(0,0,0,.2)", maxWidth: "90%", textAlign: "center" }}>{toast}</div>}
 
       {verifying && <VerificationModal verifying={verifying} result={verifyResult} firstName={firstName} onConfirm={confirmUpload} onReject={rejectUpload} expectedDoc={docs.find(d => d.id === verifying.docId)} />}
+
+      {milestoneToShow && (
+        <MilestoneModal
+          milestone={milestoneToShow}
+          firstName={firstName}
+          caseId={caseInfo?.id}
+          onClose={() => {
+            // actualiza el caseInfo local para evitar re-disparo
+            setCaseInfo(prev => prev ? { ...prev, milestone_shown: { ...(prev.milestone_shown || {}), [milestoneToShow]: true } } : prev);
+            setMilestoneToShow(null);
+          }}
+        />
+      )}
 
       <aside className="dsk" style={{ width: 260, background: C.sidebar, position: "fixed", top: 0, left: 0, bottom: 0, display: "flex", flexDirection: "column", zIndex: 50 }}>
         <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${C.sidebarMid}` }}>
@@ -276,7 +309,7 @@ export default function ClientApp({ user, onLogout }) {
         </div>}
 
         <div className="fade-in" key={page}>
-          {page === "dashboard" && <Dashboard docs={docs} pct={pct} setPage={setPage} events={events} cats={cats} user={user} pendingReq={pendingReq} firstName={firstName} onFileSelected={handleFileSelected} onScan={id=>{setScanId(id);setShowScan(true);}} />}
+          {page === "dashboard" && <Dashboard docs={docs} pct={pct} setPage={setPage} events={events} cats={cats} user={user} pendingReq={pendingReq} firstName={firstName} onFileSelected={handleFileSelected} onScan={id=>{setScanId(id);setShowScan(true);}} caseInfo={caseInfo} caseType={caseType} />}
           {page === "documents" && <Documents docs={docs} cats={cats} onFileSelected={handleFileSelected} onScan={id => { setScanId(id); setShowScan(true); }} pct={pct} firstName={firstName} />}
           {page === "timeline" && <Timeline docs={docs} cats={cats} pct={pct} user={user} caseLabel={caseLabel} />}
           {page === "calendar" && <Cal events={events} />}
@@ -417,7 +450,7 @@ function VerificationModal({verifying, result, firstName, onConfirm, onReject, e
 }
 
 // ════ DASHBOARD ════
-function Dashboard({docs,pct,setPage,events,cats,user,pendingReq,firstName,onFileSelected,onScan}){
+function Dashboard({docs,pct,setPage,events,cats,user,pendingReq,firstName,onFileSelected,onScan,caseInfo,caseType}){
   const nextEv=events.filter(e=>new Date(e.date)>=new Date()).slice(0,3);
   const urgentDocs = docs.filter(d => d.status === "pending" && d.required).slice(0, 4);
   const fRef = useRef(null);
@@ -499,6 +532,13 @@ function Dashboard({docs,pct,setPage,events,cats,user,pendingReq,firstName,onFil
         })}
       </div>
     )}
+
+    {/* Roadmap del expediente */}
+    <CaseRoadmap
+      currentPhase={caseInfo?.phase || 'document_collection'}
+      progress={pct}
+      caseType={caseType}
+    />
 
     {/* Mensaje motivacional compacto */}
     <div style={{background:`linear-gradient(135deg,${C.primary}15,${C.violet}08)`, borderRadius:12, padding:"12px 16px", marginBottom:18, display:"flex", alignItems:"center", gap:12, border:`1px solid ${C.primary}15`}}>
@@ -740,21 +780,172 @@ function Cal({events}){
 
 // ════ PAYMENTS PAGE ════
 function Payments({user, firstName}){
-  const data = PAYMENTS[user.caseType || 'lso'];
-  if(!data) return <div>No hay datos de pagos</div>;
-
-  const paid = data.payments.filter(p=>p.status==="paid");
-  const pending = data.payments.filter(p=>p.status!=="paid");
-  const upcoming = data.payments.find(p=>p.status==="upcoming");
-  const totalPaid = paid.reduce((a,p)=>a+p.amount,0);
-  const totalPending = pending.reduce((a,p)=>a+p.amount,0);
-  const pct = Math.round(totalPaid/data.totalContracted*100);
-  const method = methodInfo[data.method];
-  const MethodIcon = method.icon;
+  const [payments, setPayments] = useState([]);
+  const [caseInfo, setCaseInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(null);
+  const [toast, setToast] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        if (user?.org_id) {
+          let contactId = null;
+          if (user?.email) {
+            const { data: contact } = await supabase
+              .from('contacts')
+              .select('id')
+              .eq('email', user.email)
+              .limit(1)
+              .maybeSingle();
+            contactId = contact?.id || null;
+          }
+
+          let caseRow = null;
+          if (contactId) {
+            const { data } = await supabase
+              .from('cases')
+              .select('id, case_number, case_type')
+              .eq('contact_id', contactId)
+              .limit(1)
+              .maybeSingle();
+            caseRow = data;
+          }
+          if (!caseRow) {
+            const { data } = await supabase
+              .from('cases')
+              .select('id, case_number, case_type')
+              .eq('org_id', user.org_id)
+              .limit(1)
+              .maybeSingle();
+            caseRow = data;
+          }
+          setCaseInfo(caseRow);
+
+          if (caseRow?.id) {
+            const { data: pays } = await supabase
+              .from('payments')
+              .select('*')
+              .eq('case_id', caseRow.id)
+              .order('due_date', { ascending: true });
+            setPayments(pays || []);
+          }
+        }
+      } catch (e) {
+        console.error('Error cargando pagos:', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [user?.email, user?.org_id]);
+
+  // Detectar retorno de Stripe (?paid=<id>)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const paidId = params.get('paid');
+    if (paidId) {
+      setToast('✅ Pago recibido. Tu expediente se actualizará en breve.');
+      setTimeout(() => setToast(null), 5000);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('paid');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
+  async function handlePayNow(paymentId) {
+    setProcessing(paymentId);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/pay-installment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        body: JSON.stringify({
+          paymentId,
+          email: user.email,
+          successUrl: `${window.location.origin}${window.location.pathname}?paid=${paymentId}`,
+          cancelUrl: window.location.href,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setToast('Error al abrir la pasarela de pago.');
+      setTimeout(() => setToast(null), 4000);
+    } catch (e) {
+      setToast('Error de conexión con la pasarela.');
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setProcessing(null);
+    }
+  }
+
+  // Fallback al mock si no hay datos reales (demo / sin org_id)
+  const mockData = PAYMENTS[user.caseType || 'lso'];
+  const usesMock = !loading && payments.length === 0;
+
+  if (loading) {
+    return <div style={{padding:"40px 20px",textAlign:"center",color:C.textMuted,fontSize:13}}><Loader size={20} style={{animation:"spin 1s linear infinite"}}/><p style={{marginTop:10}}>Cargando tus pagos…</p></div>;
+  }
+  if (usesMock && !mockData) {
+    return <div style={{padding:"30px 20px",textAlign:"center",color:C.textMuted}}>No hay datos de pagos disponibles.</div>;
+  }
+
+  // Normalizamos pagos a forma común
+  const normalized = usesMock
+    ? mockData.payments.map(p => ({
+        id: p.id,
+        concept: p.concept,
+        amount: p.amount,
+        dateStr: p.date,
+        status: p.status,
+        invoice_number: p.invoice || null,
+        invoice_url: null,
+        services_included: null,
+        service_description: null,
+        payment_method: mockData.method,
+      }))
+    : payments.map(p => ({
+        id: p.id,
+        concept: p.concept,
+        amount: parseFloat(p.amount || 0),
+        dateStr: p.due_date,
+        status: p.status,
+        invoice_number: p.invoice_number || null,
+        invoice_url: p.invoice_url || null,
+        services_included: Array.isArray(p.services_included) ? p.services_included : null,
+        service_description: p.service_description || null,
+        payment_method: p.payment_method,
+      }));
+
+  const paid = normalized.filter(p => p.status === "paid");
+  const pending = normalized.filter(p => p.status !== "paid");
+  const upcoming = normalized.find(p => p.status === "upcoming") || normalized.find(p => p.status === "pending");
+  const totalPaid = paid.reduce((a,p) => a + p.amount, 0);
+  const totalPending = pending.reduce((a,p) => a + p.amount, 0);
+  const totalContracted = usesMock
+    ? mockData.totalContracted
+    : normalized.reduce((a,p) => a + p.amount, 0);
+  const pct = totalContracted > 0 ? Math.round(totalPaid/totalContracted*100) : 0;
+
+  const methodKey = usesMock
+    ? mockData.method
+    : (pending.find(p => p.payment_method)?.payment_method || paid[0]?.payment_method || 'direct_debit');
+  const method = methodInfo[methodKey] || methodInfo.direct_debit;
+  const MethodIcon = method.icon;
+
+  const ibanDisplay = usesMock ? mockData.iban : '—';
+  const beneficiary = usesMock ? mockData.beneficiary : '';
+  const paymentConcept = usesMock ? mockData.paymentConcept : (upcoming?.concept || '');
+
   function copyIban(iban){
-    navigator.clipboard.writeText(iban.replace(/\s/g,""));
+    navigator.clipboard.writeText((iban||"").replace(/\s/g,""));
     setCopied(true);
     setTimeout(()=>setCopied(false),2000);
   }
@@ -768,7 +959,7 @@ function Payments({user, firstName}){
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
           <Wallet size={16}/><span style={{fontSize:12,fontWeight:500,opacity:.8}}>TOTAL CONTRATADO</span>
         </div>
-        <p style={{fontSize:32,fontWeight:700,lineHeight:1.1}}>{fmtMoney(data.totalContracted)}</p>
+        <p style={{fontSize:32,fontWeight:700,lineHeight:1.1}}>{fmtMoney(totalContracted)}</p>
         <div style={{marginTop:18,display:"flex",alignItems:"center",gap:12}}>
           <div style={{flex:1,height:8,background:"rgba(255,255,255,.2)",borderRadius:4,overflow:"hidden"}}>
             <div style={{height:"100%",width:`${pct}%`,background:"#fff",borderRadius:4,transition:"width .8s"}}/>
@@ -780,45 +971,55 @@ function Payments({user, firstName}){
           <div style={{width:1,background:"rgba(255,255,255,.2)"}}/>
           <div><p style={{fontSize:10.5,opacity:.7,fontWeight:500}}>PENDIENTE</p><p style={{fontSize:18,fontWeight:700,marginTop:2}}>{fmtMoney(totalPending)}</p></div>
           <div style={{width:1,background:"rgba(255,255,255,.2)"}}/>
-          <div><p style={{fontSize:10.5,opacity:.7,fontWeight:500}}>{paid.length}/{data.payments.length} CUOTAS</p><p style={{fontSize:18,fontWeight:700,marginTop:2}}>{pending.length} restantes</p></div>
+          <div><p style={{fontSize:10.5,opacity:.7,fontWeight:500}}>{paid.length}/{normalized.length} CUOTAS</p><p style={{fontSize:18,fontWeight:700,marginTop:2}}>{pending.length} restantes</p></div>
         </div>
       </div>
     </div>
 
     {/* Próximo pago - alerta destacada */}
     {upcoming && (() => {
-      const days = daysUntil(upcoming.date);
-      const isTransfer = data.method === "transfer";
+      const days = daysUntil(upcoming.dateStr);
+      const isTransfer = methodKey === "transfer";
+      const isCard = methodKey === "card";
       const urgent = days <= 3;
-      const evDate = new Date(upcoming.date);
+      const evDate = new Date(upcoming.dateStr);
       return (
         <div style={{background:urgent?C.orangeSoft:C.tealSoft,border:`1.5px solid ${urgent?C.orange:C.teal}40`,borderRadius:14,padding:"18px 22px",marginBottom:16,position:"relative",overflow:"hidden"}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:14,flexWrap:"wrap"}}>
             <div style={{width:42,height:42,borderRadius:10,background:urgent?C.orange:C.teal,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              {isTransfer ? <ArrowRightCircle size={20} color="#fff"/> : <Banknote size={20} color="#fff"/>}
+              {isTransfer ? <ArrowRightCircle size={20} color="#fff"/> : isCard ? <CreditCard size={20} color="#fff"/> : <Banknote size={20} color="#fff"/>}
             </div>
             <div style={{flex:1,minWidth:200}}>
               <p style={{fontSize:11,fontWeight:600,color:urgent?C.orange:C.teal,textTransform:"uppercase",letterSpacing:".05em"}}>
-                {isTransfer ? "Próxima transferencia" : "Próximo cargo automático"}
+                {isTransfer ? "Próxima transferencia" : isCard ? "Próximo pago con tarjeta" : "Próximo cargo automático"}
               </p>
               <p style={{fontSize:18,fontWeight:700,marginTop:4}}>{fmtMoney(upcoming.amount)} <span style={{fontSize:13,fontWeight:500,color:C.textMuted}}>· {upcoming.concept}</span></p>
               <p style={{fontSize:13,color:C.text,marginTop:6,lineHeight:1.5}}>
-                {firstName}, {isTransfer ? "tienes que realizar la" : "se realizará el"} cargo el <strong>{evDate.toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"})}</strong>
+                {firstName}, {isTransfer ? "tienes que realizar la" : "se realizará el"} {isTransfer?"transferencia":"cargo"} el <strong>{evDate.toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"})}</strong>
                 {days >= 0 && (days===0?" — HOY":days===1?" — mañana":` (en ${days} días)`)}
               </p>
-              {!isTransfer ? (
-                <p style={{fontSize:12,color:C.textMuted,marginTop:8,padding:"8px 12px",background:"rgba(255,255,255,.6)",borderRadius:8}}>
-                  💡 Asegúrate de tener saldo suficiente en tu cuenta <strong>{data.iban}</strong>. Si tienes dudas, contacta con tu letrado.
-                </p>
-              ) : (
+              {!usesMock && upcoming.status === "upcoming" && (
+                <button
+                  onClick={() => handlePayNow(upcoming.id)}
+                  disabled={processing === upcoming.id}
+                  style={{marginTop:10,padding:"10px 16px",borderRadius:9,background:`linear-gradient(135deg,${C.primary},${C.violet})`,color:"#fff",fontSize:13,fontWeight:600,border:"none",cursor:processing===upcoming.id?"wait":"pointer",display:"inline-flex",alignItems:"center",gap:6}}
+                >
+                  <CreditCard size={14}/> {processing === upcoming.id ? "Procesando…" : "Pagar ahora con tarjeta"}
+                </button>
+              )}
+              {isTransfer && usesMock ? (
                 <div style={{marginTop:10,padding:"12px 14px",background:"rgba(255,255,255,.7)",borderRadius:10,fontSize:12,lineHeight:1.7}}>
                   <p style={{fontWeight:600,marginBottom:6,fontSize:11,textTransform:"uppercase",letterSpacing:".05em",color:C.textMuted}}>Datos para la transferencia</p>
-                  <p><strong>Beneficiario:</strong> {data.beneficiary}</p>
-                  <p><strong>IBAN:</strong> <code style={{background:C.bg,padding:"2px 6px",borderRadius:4,fontFamily:"monospace",fontSize:12}}>{data.iban}</code> <button onClick={()=>copyIban(data.iban)} style={{background:"none",color:C.primary,fontSize:11,fontWeight:600,marginLeft:6,display:"inline-flex",alignItems:"center",gap:3}}><Copy size={11}/>{copied?"¡Copiado!":"Copiar"}</button></p>
-                  <p><strong>Concepto:</strong> {data.paymentConcept}</p>
+                  <p><strong>Beneficiario:</strong> {beneficiary}</p>
+                  <p><strong>IBAN:</strong> <code style={{background:C.bg,padding:"2px 6px",borderRadius:4,fontFamily:"monospace",fontSize:12}}>{ibanDisplay}</code> <button onClick={()=>copyIban(ibanDisplay)} style={{background:"none",color:C.primary,fontSize:11,fontWeight:600,marginLeft:6,display:"inline-flex",alignItems:"center",gap:3}}><Copy size={11}/>{copied?"¡Copiado!":"Copiar"}</button></p>
+                  <p><strong>Concepto:</strong> {paymentConcept}</p>
                   <p><strong>Importe:</strong> {fmtMoney(upcoming.amount)}</p>
                 </div>
-              )}
+              ) : !isCard && usesMock ? (
+                <p style={{fontSize:12,color:C.textMuted,marginTop:8,padding:"8px 12px",background:"rgba(255,255,255,.6)",borderRadius:8}}>
+                  💡 Asegúrate de tener saldo suficiente en tu cuenta <strong>{ibanDisplay}</strong>. Si tienes dudas, contacta con tu letrado.
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -833,7 +1034,7 @@ function Payments({user, firstName}){
       <div style={{flex:1}}>
         <p style={{fontSize:11,color:C.textMuted,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Método de pago</p>
         <p style={{fontSize:14,fontWeight:600,marginTop:2}}>{method.label}</p>
-        <p style={{fontSize:12,color:C.textMuted,marginTop:2}}>{method.desc} · {data.iban}</p>
+        <p style={{fontSize:12,color:C.textMuted,marginTop:2}}>{method.desc}{ibanDisplay && ibanDisplay !== '—' ? ` · ${ibanDisplay}` : ''}</p>
       </div>
       <button style={{padding:"8px 14px",borderRadius:8,fontSize:12,fontWeight:500,background:C.bg,color:C.text,border:`1px solid ${C.border}`}}>Cambiar</button>
     </div>
@@ -842,29 +1043,60 @@ function Payments({user, firstName}){
     <div style={{background:C.card,borderRadius:14,padding:"20px 22px",border:`1px solid ${C.border}`}}>
       <h3 style={{fontSize:15,fontWeight:600,marginBottom:14}}>Historial de pagos</h3>
       <div>
-        {data.payments.map((p,i)=>{
+        {normalized.map((p,i)=>{
           const s = getPayStatus(p.status);
           const Icon = s.i;
-          const days = p.status==="upcoming"?daysUntil(p.date):null;
+          const days = p.status==="upcoming" || p.status==="pending" ? daysUntil(p.dateStr) : null;
+          const canPay = !usesMock && p.status === "upcoming";
           return (
-            <div key={p.id} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 0",borderBottom:i<data.payments.length-1?`1px solid ${C.bg}`:"none"}}>
-              <div style={{width:36,height:36,borderRadius:9,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <Icon size={17} color={s.c}/>
-              </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                  <p style={{fontSize:13,fontWeight:600}}>{p.concept}</p>
-                  <span style={{fontSize:10,fontWeight:600,color:s.c,background:s.bg,padding:"2px 7px",borderRadius:4}}>{s.l}</span>
+            <div key={p.id} style={{padding:"14px 0",borderBottom:i<normalized.length-1?`1px solid ${C.bg}`:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div style={{width:36,height:36,borderRadius:9,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Icon size={17} color={s.c}/>
                 </div>
-                <p style={{fontSize:11.5,color:C.textMuted,marginTop:3}}>
-                  {new Date(p.date).toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"})}
-                  {p.invoice && ` · Factura ${p.invoice}`}
-                  {days !== null && days >= 0 && ` · ${days===0?"Hoy":days===1?"Mañana":`En ${days} días`}`}
-                </p>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0}}>
-                <p style={{fontSize:14,fontWeight:700}}>{fmtMoney(p.amount)}</p>
-                {p.invoice && <button style={{fontSize:11,color:C.primary,background:"none",fontWeight:500,marginTop:3,display:"flex",alignItems:"center",gap:3}}><Download size={11}/> Factura</button>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <p style={{fontSize:13,fontWeight:600}}>{p.concept}</p>
+                    <span style={{fontSize:10,fontWeight:600,color:s.c,background:s.bg,padding:"2px 7px",borderRadius:4}}>{s.l}</span>
+                  </div>
+                  <p style={{fontSize:11.5,color:C.textMuted,marginTop:3}}>
+                    {p.dateStr ? new Date(p.dateStr).toLocaleDateString("es-ES",{day:"numeric",month:"short",year:"numeric"}) : "—"}
+                    {p.invoice_number && ` · Factura ${p.invoice_number}`}
+                    {days !== null && days >= 0 && ` · ${days===0?"Hoy":days===1?"Mañana":`En ${days} días`}`}
+                  </p>
+                  {p.service_description && (
+                    <p style={{fontSize:11.5,color:C.text,marginTop:4,lineHeight:1.5}}>{p.service_description}</p>
+                  )}
+                  {p.services_included && p.services_included.length > 0 && (
+                    <details style={{marginTop:6}}>
+                      <summary style={{fontSize:11,color:C.primary,cursor:"pointer",fontWeight:500}}>¿Qué incluye este pago?</summary>
+                      <ul style={{marginTop:5,paddingLeft:16,fontSize:11,color:C.text,lineHeight:1.6}}>
+                        {p.services_included.map((s, idx) => <li key={idx}>{typeof s === 'string' ? s : (s.label || JSON.stringify(s))}</li>)}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+                <div style={{textAlign:"right",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+                  <p style={{fontSize:14,fontWeight:700}}>{fmtMoney(p.amount)}</p>
+                  {canPay && (
+                    <button
+                      onClick={()=>handlePayNow(p.id)}
+                      disabled={processing === p.id}
+                      style={{padding:"8px 14px",borderRadius:8,background:`linear-gradient(135deg,${C.primary},${C.violet})`,color:"#fff",fontSize:12,fontWeight:600,border:"none",cursor:processing===p.id?"wait":"pointer",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}
+                    >
+                      <CreditCard size={12}/> {processing === p.id ? "Procesando…" : "Pagar con tarjeta"}
+                    </button>
+                  )}
+                  {p.invoice_url ? (
+                    <a href={p.invoice_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:C.primary,background:"none",fontWeight:500,display:"flex",alignItems:"center",gap:3,textDecoration:"none"}}>
+                      <Download size={11}/> Ver factura
+                    </a>
+                  ) : p.invoice_number && usesMock ? (
+                    <button style={{fontSize:11,color:C.primary,background:"none",fontWeight:500,display:"flex",alignItems:"center",gap:3,border:"none",cursor:"pointer"}}>
+                      <Download size={11}/> Factura
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           );
@@ -877,6 +1109,8 @@ function Payments({user, firstName}){
       <Sparkles size={13} color={C.primary} style={{flexShrink:0,marginTop:1}}/>
       <span><strong>Sincronización con ERP:</strong> el estado de tus pagos se actualiza automáticamente cada vez que el ERP procesa un cobro. Recibirás aviso por WhatsApp y notificación en la app antes de cada cargo.</span>
     </div>
+
+    {toast && <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:C.sidebar,color:"#fff",padding:"12px 24px",borderRadius:12,fontSize:13,fontWeight:500,zIndex:999,boxShadow:"0 8px 30px rgba(0,0,0,.2)",maxWidth:"90%",textAlign:"center"}}>{toast}</div>}
   </div>);
 }
 
