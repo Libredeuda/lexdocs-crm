@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard } from "lucide-react";
+import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard, Zap } from "lucide-react";
 import { LOGO, font, C } from "../constants";
 import { supabase } from '../lib/supabase';
 import Carlota from "../components/Carlota";
@@ -13,6 +13,7 @@ import TeamMembers from "./settings/TeamMembers";
 import ApiKeys from "./settings/ApiKeys";
 import PipelineSettings from "./settings/PipelineSettings";
 import BillingSettings from "./settings/BillingSettings";
+import Integrations from "./integrations/Integrations";
 import SearchView from "./lexconsulta/SearchView";
 
 export default function AdminApp({ user, onLogout }) {
@@ -79,6 +80,7 @@ export default function AdminApp({ user, onLogout }) {
     { id: "cases", label: "Expedientes", icon: FolderKanban },
     { id: "contacts", label: "Contactos", icon: Users },
     { id: "pipeline", label: "Pipeline", icon: Kanban },
+    { id: "integrations", label: "Integraciones", icon: Zap },
     { id: "lexconsulta", label: "LexConsulta", icon: Scale },
   ];
 
@@ -97,6 +99,7 @@ export default function AdminApp({ user, onLogout }) {
     cases: "Expedientes",
     contacts: "Contactos",
     pipeline: "Pipeline",
+    integrations: "Integraciones",
     lexconsulta: "LexConsulta",
     settings: "Configuracion",
     "contact-detail": "Detalle de contacto",
@@ -267,6 +270,7 @@ export default function AdminApp({ user, onLogout }) {
           {page === "contacts" && <ContactList setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "pipeline" && <ContactPipeline setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "lexconsulta" && <SearchView />}
+          {page === "integrations" && <Integrations />}
           {page === "contact-detail" && selectedContact && (
             <ContactDetail
               contact={selectedContact}

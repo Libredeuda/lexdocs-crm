@@ -20,7 +20,9 @@
       "Bash(export SUPABASE_ACCESS_TOKEN=sbp_a52943d782088834506d22becc3ff0897260af89)",
       "Bash(supabase link:*)",
       "Bash(supabase secrets:*)",
-      "Bash(supabase functions:*)"
+      "Bash(supabase functions:*)",
+      "Bash(export SUPABASE_ACCESS_TOKEN=sbp_a2b04393b3ed7caf8e1cfe28b18e9d889d141f91)",
+      "Bash(curl -s -X POST https://agzcaqgxlyrtbxtyxkwp.supabase.co/functions/v1/send-notification -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnemNhcWd4bHlydGJ4dHl4a3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDMyOTQsImV4cCI6MjA5MTgxOTI5NH0.9zBiQbqs2Im4Krtq76u9qr8YRqY5pplLJgAvYJPvWVE' -H 'Content-Type: application/json' -d '{:*)"
     ]
   }
 }
