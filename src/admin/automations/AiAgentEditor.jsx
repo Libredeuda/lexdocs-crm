@@ -24,28 +24,33 @@ export default function AiAgentEditor({ user, agent, onClose, onSaved }) {
 
   async function handleSave() {
     if (!name.trim()) { alert("Introduce un nombre"); return; }
+    const finalPrompt = (systemPrompt.trim() || DEFAULT_PROMPT);
+    if (!user?.org_id) { alert("Falta org_id del usuario. Recarga la página."); return; }
+    if (!channels || channels.length === 0) { alert("Selecciona al menos un canal"); return; }
     setSaving(true);
     try {
       const payload = {
-        org_id: user?.org_id,
+        org_id: user.org_id,
         name: name.trim(),
         description: description.trim() || null,
         role, tone, goal: goal.trim() || null,
-        system_prompt: systemPrompt.trim() || null,
+        system_prompt: finalPrompt,
         handoff_conditions: handoffConditions.trim() || null,
         channels, max_messages: maxMessages || 10,
         model: "claude-sonnet-4-5",
         is_active: isActive,
       };
+      let error;
       if (agent?.id) {
-        await supabase.from("ai_agents").update(payload).eq("id", agent.id);
+        ({ error } = await supabase.from("ai_agents").update(payload).eq("id", agent.id));
       } else {
-        await supabase.from("ai_agents").insert(payload);
+        ({ error } = await supabase.from("ai_agents").insert(payload));
       }
+      if (error) throw error;
       onSaved();
     } catch (err) {
-      console.error(err);
-      alert("Error al guardar: " + (err.message || err));
+      console.error("Error guardando agente:", err);
+      alert("Error al guardar: " + (err.message || err.hint || JSON.stringify(err)));
     } finally {
       setSaving(false);
     }
