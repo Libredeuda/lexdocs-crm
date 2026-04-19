@@ -27,7 +27,8 @@
       "Bash(curl -s 'https://agzcaqgxlyrtbxtyxkwp.supabase.co/rest/v1/contacts?source=eq.ads&order=created_at.desc&limit=5' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnemNhcWd4bHlydGJ4dHl4a3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDMyOTQsImV4cCI6MjA5MTgxOTI5NH0.9zBiQbqs2Im4Krtq76u9qr8YRqY5pplLJgAvYJPvWVE')",
       "Bash(python3 -m json.tool)",
       "Bash(curl -s 'https://agzcaqgxlyrtbxtyxkwp.supabase.co/rest/v1/contacts?order=created_at.desc&limit=10&select=id,first_name,last_name,source,status,created_at' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnemNhcWd4bHlydGJ4dHl4a3dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDMyOTQsImV4cCI6MjA5MTgxOTI5NH0.9zBiQbqs2Im4Krtq76u9qr8YRqY5pplLJgAvYJPvWVE')",
-      "Bash(export SUPABASE_ACCESS_TOKEN=sbp_f81661d39e22b44d1c76186741b1fe0b3f3bae4b)"
+      "Bash(export SUPABASE_ACCESS_TOKEN=sbp_f81661d39e22b44d1c76186741b1fe0b3f3bae4b)",
+      "Bash(export SUPABASE_ACCESS_TOKEN=sbp_a473e3f2202aca7457739c140fa24e8d6d6ba6d3)"
     ]
   }
 }

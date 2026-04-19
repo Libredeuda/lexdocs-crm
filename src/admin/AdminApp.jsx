@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard, Zap } from "lucide-react";
+import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard, Zap, Calendar } from "lucide-react";
 import { LOGO, font, C } from "../constants";
 import { supabase } from '../lib/supabase';
 import Carlota from "../components/Carlota";
@@ -13,7 +13,10 @@ import TeamMembers from "./settings/TeamMembers";
 import ApiKeys from "./settings/ApiKeys";
 import PipelineSettings from "./settings/PipelineSettings";
 import BillingSettings from "./settings/BillingSettings";
+import CalendarIntegration from "./settings/CalendarIntegration";
 import Integrations from "./integrations/Integrations";
+import AgendaView from "./agenda/AgendaView";
+import NotificationBell from "../components/NotificationBell";
 import SearchView from "./lexconsulta/SearchView";
 
 export default function AdminApp({ user, onLogout }) {
@@ -77,6 +80,7 @@ export default function AdminApp({ user, onLogout }) {
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "agenda", label: "Agenda", icon: Calendar },
     { id: "cases", label: "Expedientes", icon: FolderKanban },
     { id: "contacts", label: "Contactos", icon: Users },
     { id: "pipeline", label: "Pipeline", icon: Kanban },
@@ -89,6 +93,7 @@ export default function AdminApp({ user, onLogout }) {
   const settingsTabs = [
     { id: "org", label: "Despacho", icon: Building2 },
     { id: "team", label: "Equipo", icon: UserCog },
+    { id: "calendar", label: "Mi calendario", icon: Calendar },
     { id: "apikeys", label: "API Keys", icon: Code },
     { id: "pipeline-cfg", label: "Pipeline", icon: GitBranch },
     { id: "billing", label: "Facturacion", icon: CreditCard },
@@ -96,6 +101,7 @@ export default function AdminApp({ user, onLogout }) {
 
   const pageTitle = {
     dashboard: "Dashboard",
+    agenda: "Agenda",
     cases: "Expedientes",
     contacts: "Contactos",
     pipeline: "Pipeline",
@@ -227,9 +233,14 @@ export default function AdminApp({ user, onLogout }) {
 
       {/* Main content */}
       <main className="mc" style={{ marginLeft: 260, flex: 1, padding: "24px 30px", minHeight: "100vh" }}>
-        <div style={{ marginBottom: 22 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em" }}>{pageTitle[page] || "LibreApp"}</h1>
-          <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>Panel de administracion · {casesLoading ? '...' : cases.length} expedientes</p>
+        <div style={{ marginBottom: 22, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.02em" }}>{pageTitle[page] || "LibreApp"}</h1>
+            <p style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>Panel de administracion · {casesLoading ? '...' : cases.length} expedientes</p>
+          </div>
+          <div style={{ background: C.sidebar, borderRadius: 10, padding: "4px 8px", display: "flex", alignItems: "center" }}>
+            <NotificationBell user={user} />
+          </div>
         </div>
 
         {/* Settings sub-nav */}
@@ -265,7 +276,8 @@ export default function AdminApp({ user, onLogout }) {
         )}
 
         <div className="fade-in" key={page === "settings" ? `settings-${settingsTab}` : page}>
-          {page === "dashboard" && <AdminDashboard cases={cases} setPage={setPage} />}
+          {page === "dashboard" && <AdminDashboard cases={cases} setPage={setPage} user={user} />}
+          {page === "agenda" && <AgendaView user={user} />}
           {page === "cases" && <AdminCaseList cases={cases} onRefresh={loadCases} />}
           {page === "contacts" && <ContactList setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "pipeline" && <ContactPipeline setPage={setPage} setSelectedContact={setSelectedContact} />}
@@ -280,6 +292,7 @@ export default function AdminApp({ user, onLogout }) {
           )}
           {page === "settings" && settingsTab === "org" && <OrgSettings />}
           {page === "settings" && settingsTab === "team" && <TeamMembers />}
+          {page === "settings" && settingsTab === "calendar" && <CalendarIntegration user={user} />}
           {page === "settings" && settingsTab === "apikeys" && <ApiKeys />}
           {page === "settings" && settingsTab === "pipeline-cfg" && <PipelineSettings />}
           {page === "settings" && settingsTab === "billing" && <BillingSettings />}
