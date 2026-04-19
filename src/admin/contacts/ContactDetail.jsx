@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import {
   ArrowLeft, Mail, Phone, Building2, Edit3, PhoneCall, Send,
   UserCheck, Tag, Plus, Clock, FileText, MessageSquare, ChevronDown,
-  CheckSquare, Calendar, Briefcase, Paperclip, Upload, Download, Trash2, AlertCircle, Scale
+  CheckSquare, Calendar, Briefcase, Paperclip, Upload, Download, Trash2, AlertCircle, Scale,
+  Sparkles, RefreshCw, TrendingUp
 } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from "../../lib/supabase";
@@ -49,8 +50,41 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
   const [editingEvent, setEditingEvent] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [aiScoring, setAiScoring] = useState(false);
 
   const st = statusConfig[status] || statusConfig.lead;
+
+  async function handleRescore() {
+    setAiScoring(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-lead-scorer`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ contact_id: contact.id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Reload contact data
+      const { data: updated } = await supabase.from('contacts').select('*').eq('id', contact.id).single();
+      if (updated) setData(prev => ({ ...prev, ...updated }));
+      showToast('Score recalculado');
+    } catch (err) {
+      console.error(err);
+      showToast('Error: ' + (err.message || err));
+    } finally {
+      setAiScoring(false);
+    }
+  }
+
+  const tierConfig = {
+    hot:  { label: "HOT",  color: C.red,    bg: `${C.red}18` },
+    warm: { label: "WARM", color: C.orange, bg: `${C.orange}18` },
+    cold: { label: "COLD", color: C.blue,   bg: `${C.blue}18` },
+  };
 
   useEffect(() => {
     if (!contact?.id) return;
@@ -715,6 +749,103 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
                 {team.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
               </select>
             </div>
+          </Card>
+
+          {/* AI Intelligence card */}
+          <Card title="Inteligencia IA" icon={Sparkles}>
+            {data.ai_score != null ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
+                  <div style={{
+                    width: 64, height: 64, borderRadius: 14,
+                    background: tierConfig[data.ai_tier]?.bg || `${C.primary}18`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}>
+                    <span style={{
+                      fontSize: 22, fontWeight: 700,
+                      color: tierConfig[data.ai_tier]?.color || C.primary,
+                    }}>{data.ai_score}</span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {data.ai_tier && (
+                      <span style={{
+                        display: "inline-block", padding: "3px 10px", borderRadius: 6,
+                        fontSize: 11, fontWeight: 700,
+                        background: tierConfig[data.ai_tier]?.bg || C.bg,
+                        color: tierConfig[data.ai_tier]?.color || C.textMuted,
+                        letterSpacing: ".04em",
+                      }}>{tierConfig[data.ai_tier]?.label || data.ai_tier.toUpperCase()}</span>
+                    )}
+                    <p style={{ fontSize: 10.5, color: C.textMuted, marginTop: 6 }}>
+                      {data.ai_score_updated_at
+                        ? `Actualizado: ${new Date(data.ai_score_updated_at).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}`
+                        : ""}
+                    </p>
+                  </div>
+                </div>
+
+                {data.ai_score_reasoning && (
+                  <div style={{ padding: "10px 12px", background: C.bg, borderRadius: 10, marginBottom: 10 }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Razonamiento</p>
+                    <p style={{ fontSize: 11.5, color: C.text, margin: 0, lineHeight: 1.5 }}>{data.ai_score_reasoning}</p>
+                  </div>
+                )}
+
+                {data.ai_next_action && (
+                  <div style={{
+                    padding: "10px 12px",
+                    background: `linear-gradient(135deg, ${C.primary}10, ${C.violet}08)`,
+                    borderRadius: 10, borderLeft: `3px solid ${C.primary}`, marginBottom: 12,
+                  }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                      <TrendingUp size={10} /> Siguiente acción
+                    </p>
+                    <p style={{ fontSize: 12, color: C.text, margin: 0, lineHeight: 1.5, fontWeight: 500 }}>{data.ai_next_action}</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleRescore}
+                  disabled={aiScoring}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    padding: "8px 14px", borderRadius: 10, border: `1px solid ${C.border}`,
+                    background: C.white, color: C.primary, fontSize: 12, fontWeight: 600,
+                    cursor: aiScoring ? "wait" : "pointer", fontFamily: font,
+                    opacity: aiScoring ? 0.7 : 1,
+                  }}
+                >
+                  <RefreshCw size={12} style={{ animation: aiScoring ? "spin 1s linear infinite" : "none" }} />
+                  {aiScoring ? "Analizando..." : "Recalcular score"}
+                </button>
+              </>
+            ) : (
+              <div style={{ textAlign: "center", padding: "8px 0" }}>
+                <Sparkles size={28} color={C.primary} style={{ margin: "0 auto 8px" }} />
+                <p style={{ fontSize: 12.5, color: C.text, fontWeight: 500, marginBottom: 4 }}>
+                  Sin análisis previo
+                </p>
+                <p style={{ fontSize: 11, color: C.textMuted, marginBottom: 12 }}>
+                  Analiza este lead con IA para obtener score y recomendaciones
+                </p>
+                <button
+                  onClick={handleRescore}
+                  disabled={aiScoring}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "9px 18px", borderRadius: 10, border: "none",
+                    background: `linear-gradient(135deg, ${C.primary}, ${C.violet})`,
+                    color: "#fff", fontSize: 12, fontWeight: 600,
+                    cursor: aiScoring ? "wait" : "pointer", fontFamily: font,
+                    opacity: aiScoring ? 0.7 : 1,
+                  }}
+                >
+                  <Sparkles size={13} />
+                  {aiScoring ? "Analizando..." : "Analizar con IA"}
+                </button>
+              </div>
+            )}
           </Card>
 
           {/* Cases card */}

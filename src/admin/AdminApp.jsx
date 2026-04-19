@@ -16,6 +16,7 @@ import BillingSettings from "./settings/BillingSettings";
 import CalendarIntegration from "./settings/CalendarIntegration";
 import Integrations from "./integrations/Integrations";
 import AgendaView from "./agenda/AgendaView";
+import AutomationsHub from "./automations/AutomationsHub";
 import NotificationBell from "../components/NotificationBell";
 import SearchView from "./lexconsulta/SearchView";
 
@@ -81,6 +82,7 @@ export default function AdminApp({ user, onLogout }) {
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "agenda", label: "Agenda", icon: Calendar },
+    { id: "automations", label: "Automatizaciones", icon: Zap },
     { id: "cases", label: "Expedientes", icon: FolderKanban },
     { id: "contacts", label: "Contactos", icon: Users },
     { id: "pipeline", label: "Pipeline", icon: Kanban },
@@ -102,6 +104,7 @@ export default function AdminApp({ user, onLogout }) {
   const pageTitle = {
     dashboard: "Dashboard",
     agenda: "Agenda",
+    automations: "Automatizaciones",
     cases: "Expedientes",
     contacts: "Contactos",
     pipeline: "Pipeline",
@@ -278,6 +281,7 @@ export default function AdminApp({ user, onLogout }) {
         <div className="fade-in" key={page === "settings" ? `settings-${settingsTab}` : page}>
           {page === "dashboard" && <AdminDashboard cases={cases} setPage={setPage} user={user} />}
           {page === "agenda" && <AgendaView user={user} />}
+          {page === "automations" && <AutomationsHub user={user} />}
           {page === "cases" && <AdminCaseList cases={cases} onRefresh={loadCases} />}
           {page === "contacts" && <ContactList setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "pipeline" && <ContactPipeline setPage={setPage} setSelectedContact={setSelectedContact} />}
