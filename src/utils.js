@@ -1,11 +1,14 @@
-import { CheckCircle, Clock, AlertCircle, Eye, Phone, Briefcase, Scale } from "lucide-react";
+import { CheckCircle, Clock, AlertCircle, Eye, Phone, Briefcase, Scale, MinusCircle, XCircle } from "lucide-react";
 import { C } from "./constants";
 
 export const statusMap = {
   uploaded: { l: "Verificado", c: C.green, bg: C.greenSoft, i: CheckCircle },
+  approved: { l: "Aprobado", c: C.green, bg: C.greenSoft, i: CheckCircle },
   partial: { l: "Incompleto", c: C.orange, bg: C.orangeSoft, i: AlertCircle },
   pending: { l: "Pendiente", c: C.red, bg: C.redSoft, i: Clock },
   review: { l: "En revisión", c: C.blue, bg: C.blueSoft, i: Eye },
+  rejected: { l: "Rechazado", c: C.red, bg: C.redSoft, i: XCircle },
+  not_applicable: { l: "No aplica", c: C.textMuted, bg: C.bg, i: MinusCircle },
 };
 
 export const getS = (s) => statusMap[s] || statusMap.pending;

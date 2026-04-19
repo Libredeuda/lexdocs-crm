@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Upload, Camera, FileText, CheckCircle, Clock, AlertCircle, Calendar, MessageSquare, Home, LogOut, ChevronRight, X, Bell, User, Send, Paperclip, ScanLine, Eye, BarChart3, Phone, FolderOpen, Shield, Scale, Briefcase, Menu, ChevronDown, Building2, FileWarning, ChevronUp, Check, RotateCw, Sparkles, ShieldCheck, ShieldAlert, Loader, RefreshCw, CreditCard, Wallet, Receipt, Copy, Download, ArrowRightCircle, Banknote, TrendingUp } from "lucide-react";
+import { Upload, Camera, FileText, CheckCircle, Clock, AlertCircle, Calendar, MessageSquare, Home, LogOut, ChevronRight, X, Bell, User, Send, Paperclip, ScanLine, Eye, BarChart3, Phone, FolderOpen, Shield, Scale, Briefcase, Menu, ChevronDown, Building2, FileWarning, ChevronUp, Check, RotateCw, Sparkles, ShieldCheck, ShieldAlert, Loader, RefreshCw, CreditCard, Wallet, Receipt, Copy, Download, ArrowRightCircle, Banknote, TrendingUp, MinusCircle, XCircle } from "lucide-react";
 import { LOGO, font, C, KB, DOCS_LSO, DOCS_CONCURSO, EVENTS_LSO, EVENTS_CONC, PAYMENTS, methodInfo } from "../constants";
 import { statusMap, getS, evSt, getEv, fmtD, fmtMoney, daysUntil, payStatusMap, getPayStatus, motivMsg } from "../utils";
 import Carlota from "../components/Carlota";
@@ -231,6 +231,43 @@ export default function ClientApp({ user, onLogout }) {
     setVerifyResult(null);
   }
 
+  async function markNotApplicable(docId) {
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) return;
+    const ok = window.confirm(`¿Marcar "${doc.name}" como NO APLICA a tu caso?\n\nEsto le indica al despacho que este documento no es necesario para tu situación. Tu abogado podrá revisarlo después.`);
+    if (!ok) return;
+    const reason = window.prompt(`(Opcional) ¿Por qué no es necesario? Por ejemplo: "No tengo libro de familia porque soy soltero".`, "");
+    // Update local immediately
+    setDocs(p => p.map(d => d.id === docId ? { ...d, status: "not_applicable", note: reason || "Marcado como no aplica" } : d));
+    setToast(`"${doc.name}" marcado como No aplica`);
+    setTimeout(() => setToast(null), 3500);
+    // Persist a Supabase si es usuario real
+    if (user.org_id) {
+      try {
+        await supabase.from("documents").upsert({
+          org_id: user.org_id,
+          doc_type_id: docId,
+          name: doc.name,
+          status: "not_applicable",
+          not_applicable_reason: reason?.trim() || null,
+        }, { onConflict: "doc_type_id" });
+      } catch (e) { console.warn("No persisted not_applicable:", e.message); }
+    }
+  }
+
+  async function reactivateDoc(docId) {
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) return;
+    setDocs(p => p.map(d => d.id === docId ? { ...d, status: "pending", note: undefined } : d));
+    setToast(`"${doc.name}" reactivado como pendiente`);
+    setTimeout(() => setToast(null), 3000);
+    if (user.org_id) {
+      try {
+        await supabase.from("documents").update({ status: "pending", not_applicable_reason: null }).eq("doc_type_id", docId).eq("org_id", user.org_id);
+      } catch (e) { console.warn("No persisted reactivate:", e.message); }
+    }
+  }
+
   const navItems = [{ id: "dashboard", label: "Inicio", icon: Home }, { id: "documents", label: "Documentos", icon: FolderOpen, badge: pendingReq }, { id: "timeline", label: "Mi expediente", icon: BarChart3 }, { id: "calendar", label: "Agenda", icon: Calendar }, { id: "messages", label: "Mi abogado", icon: Scale }, { id: "payments", label: "Pagos", icon: Wallet }, { id: "chat", label: "Asistente IA", icon: MessageSquare }];
   const caseLabel = caseType === "concurso" ? "Concurso de Acreedores" : "Ley de Segunda Oportunidad";
 
@@ -310,7 +347,7 @@ export default function ClientApp({ user, onLogout }) {
 
         <div className="fade-in" key={page}>
           {page === "dashboard" && <Dashboard docs={docs} pct={pct} setPage={setPage} events={events} cats={cats} user={user} pendingReq={pendingReq} firstName={firstName} onFileSelected={handleFileSelected} onScan={id=>{setScanId(id);setShowScan(true);}} caseInfo={caseInfo} caseType={caseType} />}
-          {page === "documents" && <Documents docs={docs} cats={cats} onFileSelected={handleFileSelected} onScan={id => { setScanId(id); setShowScan(true); }} pct={pct} firstName={firstName} />}
+          {page === "documents" && <Documents docs={docs} cats={cats} onFileSelected={handleFileSelected} onScan={id => { setScanId(id); setShowScan(true); }} pct={pct} firstName={firstName} onMarkNotApplicable={markNotApplicable} onReactivate={reactivateDoc} />}
           {page === "timeline" && <Timeline docs={docs} cats={cats} pct={pct} user={user} caseLabel={caseLabel} />}
           {page === "calendar" && <Cal events={events} />}
           {page === "payments" && <Payments user={user} firstName={firstName} />}
@@ -592,7 +629,7 @@ function Dashboard({docs,pct,setPage,events,cats,user,pendingReq,firstName,onFil
 }
 
 // ════ DOCUMENTS ════
-function Documents({docs,cats,onFileSelected,onScan,pct,firstName}){
+function Documents({docs,cats,onFileSelected,onScan,pct,firstName,onMarkNotApplicable,onReactivate}){
   const[filter,setFilter]=useState("all");
   const[expCats,setExpCats]=useState(new Set(cats));
   const fRef=useRef(null);
@@ -672,7 +709,7 @@ function Documents({docs,cats,onFileSelected,onScan,pct,firstName}){
                   {doc.note&&<p style={{fontSize:10.5,color:doc.note.includes("Verificado")?C.green:C.blue,marginTop:4,fontStyle:"italic"}}>{doc.note}</p>}
                 </div>
                 {isPending && (
-                  <div style={{display:"flex",gap:5,flexShrink:0}}>
+                  <div style={{display:"flex",gap:5,flexShrink:0,flexWrap:"wrap"}}>
                     <button onClick={()=>triggerUpload(doc.id, "file")} title="Adjuntar archivo" style={{padding:"7px 11px",borderRadius:7,background:`linear-gradient(135deg,${C.primary},${C.violet})`,color:"#fff",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
                       <Paperclip size={11}/>Subir
                     </button>
@@ -681,6 +718,18 @@ function Documents({docs,cats,onFileSelected,onScan,pct,firstName}){
                     </button>
                     <button onClick={()=>onScan(doc.id)} title="Escanear" style={{padding:"7px 9px",borderRadius:7,background:`rgba(124,91,240,0.08)`,color:C.violet,fontSize:11,fontWeight:600,border:`1px solid ${C.violet}30`}}>
                       <ScanLine size={11}/>
+                    </button>
+                    {!doc.required && onMarkNotApplicable && (
+                      <button onClick={()=>onMarkNotApplicable(doc.id)} title="Marcar como no aplica a mi caso" style={{padding:"7px 9px",borderRadius:7,background:C.bg,color:C.textMuted,fontSize:11,fontWeight:600,border:`1px dashed ${C.border}`,display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap"}}>
+                        <MinusCircle size={11}/> No aplica
+                      </button>
+                    )}
+                  </div>
+                )}
+                {doc.status === "not_applicable" && onReactivate && (
+                  <div style={{display:"flex",gap:5,flexShrink:0}}>
+                    <button onClick={()=>onReactivate(doc.id)} title="Volver a marcar como pendiente" style={{padding:"7px 11px",borderRadius:7,background:C.card,color:C.text,fontSize:11,fontWeight:600,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+                      <RefreshCw size={11}/> Reactivar
                     </button>
                   </div>
                 )}

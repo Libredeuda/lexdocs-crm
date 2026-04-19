@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   X, Check, XCircle, FileText, Eye, Loader, Sparkles,
-  ShieldCheck, ShieldAlert, AlertCircle, Clock, CheckCircle, Download, RefreshCw
+  ShieldCheck, ShieldAlert, AlertCircle, Clock, CheckCircle, Download, RefreshCw, MinusCircle
 } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from "../../lib/supabase";
@@ -12,6 +12,7 @@ const STATUS_CONFIG = {
   review: { label: "Pendiente revisar", color: C.orange, bg: C.orangeSoft, icon: AlertCircle },
   approved: { label: "Aprobado", color: C.green, bg: C.greenSoft, icon: CheckCircle },
   rejected: { label: "Rechazado", color: C.red, bg: C.redSoft, icon: XCircle },
+  not_applicable: { label: "No aplica a este caso", color: C.textMuted, bg: C.bg, icon: MinusCircle },
 };
 
 const AI_VERDICT_CONFIG = {
@@ -84,6 +85,54 @@ export default function CaseDocuments({ caseId, caseNumber, clientName, onClose 
       } catch (e) {
         console.error("Signed URL error", e);
       }
+    }
+  }
+
+  async function markNotApplicable(doc) {
+    const reason = window.prompt(`Marcar "${doc.name || doc.doc_type?.name}" como NO APLICA a este caso.\n\n¿Por qué no es necesario? (opcional)`, "");
+    if (reason === null) return; // cancelado
+    setProcessing(doc.id);
+    try {
+      const { error } = await supabase
+        .from("documents")
+        .update({
+          status: "not_applicable",
+          reviewed_by: currentUserId,
+          reviewed_at: new Date().toISOString(),
+          not_applicable_reason: (reason || "").trim() || null,
+        })
+        .eq("id", doc.id);
+      if (error) throw error;
+      showToast(`"${doc.name || doc.doc_type?.name}" marcado como No aplica`);
+      loadDocs();
+    } catch (e) {
+      console.error(e);
+      showToast("Error al marcar no aplica");
+    } finally {
+      setProcessing(null);
+    }
+  }
+
+  async function reactivateDoc(doc) {
+    setProcessing(doc.id);
+    try {
+      const { error } = await supabase
+        .from("documents")
+        .update({
+          status: "pending",
+          reviewed_by: null,
+          reviewed_at: null,
+          not_applicable_reason: null,
+        })
+        .eq("id", doc.id);
+      if (error) throw error;
+      showToast(`"${doc.name || doc.doc_type?.name}" reactivado`);
+      loadDocs();
+    } catch (e) {
+      console.error(e);
+      showToast("Error al reactivar");
+    } finally {
+      setProcessing(null);
     }
   }
 
@@ -285,9 +334,19 @@ export default function CaseDocuments({ caseId, caseNumber, clientName, onClose 
                             </button>
                           </>
                         )}
+                        {doc.status === "pending" && (
+                          <button onClick={() => markNotApplicable(doc)} disabled={processing === doc.id} style={btnMuted} title="Marcar que este documento no es necesario para este caso">
+                            <MinusCircle size={12} /> No aplica
+                          </button>
+                        )}
                         {doc.status === "rejected" && (
                           <button onClick={() => approveDoc(doc)} disabled={processing === doc.id} style={btnGreen}>
                             <RefreshCw size={12} /> Aprobar igualmente
+                          </button>
+                        )}
+                        {doc.status === "not_applicable" && (
+                          <button onClick={() => reactivateDoc(doc)} disabled={processing === doc.id} style={btnSecondary} title="Volver a hacer este documento necesario">
+                            <RefreshCw size={12} /> Reactivar
                           </button>
                         )}
                       </div>
@@ -365,3 +424,4 @@ const btnBase = {
 const btnSecondary = { ...btnBase, background: C.card, color: C.text, border: `1px solid ${C.border}` };
 const btnGreen = { ...btnBase, background: C.green, color: "#fff" };
 const btnRed = { ...btnBase, background: C.redSoft, color: C.red, border: `1px solid ${C.red}40` };
+const btnMuted = { ...btnBase, background: C.bg, color: C.textMuted, border: `1px solid ${C.border}`, borderStyle: "dashed" };
