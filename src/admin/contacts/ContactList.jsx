@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   Search, Plus, ChevronRight, ChevronLeft, Globe, Users, Megaphone,
-  PenLine, MessageCircle, Code, Filter, TrendingUp, UserPlus, BarChart3
+  PenLine, MessageCircle, Code, Filter, TrendingUp, UserPlus, BarChart3, Trash2
 } from "lucide-react";
 import { C, font } from "../../constants";
 import { useContacts } from '../../lib/hooks/useContacts';
@@ -28,7 +28,18 @@ const sourceConfig = {
 const PAGE_SIZE = 5;
 
 export default function ContactList({ setPage, setSelectedContact }) {
-  const { contacts, total, loading, error, fetchContacts, createContact } = useContacts();
+  const { contacts, total, loading, error, fetchContacts, createContact, deleteContact } = useContacts();
+
+  async function handleDelete(e, contact) {
+    e.stopPropagation();
+    if (!window.confirm(`¿Eliminar el contacto "${contact.first_name} ${contact.last_name || ''}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await deleteContact(contact.id);
+      fetchContacts({ search, status: statusFilter === 'all' ? undefined : statusFilter, source: sourceFilter === 'all' ? undefined : sourceFilter, page: currentPage, pageSize: PAGE_SIZE });
+    } catch (err) {
+      alert("Error al eliminar: " + (err.message || err));
+    }
+  }
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -300,7 +311,20 @@ export default function ContactList({ setPage, setSelectedContact }) {
               <span style={{ fontSize: 11.5, color: C.textMuted }}>{formatDate(c.updated_at)}</span>
 
               {/* Action */}
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, alignItems: "center" }}>
+                <button
+                  onClick={(e) => handleDelete(e, c)}
+                  title="Eliminar contacto"
+                  style={{
+                    padding: 6, borderRadius: 7, border: "none", background: "transparent",
+                    cursor: "pointer", color: C.textMuted, display: "flex", alignItems: "center",
+                    opacity: hoveredRow === c.id ? 1 : 0.4, transition: "opacity .15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = C.red; e.currentTarget.style.background = `${C.red}15`; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = C.textMuted; e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Trash2 size={14} />
+                </button>
                 <ChevronRight size={16} color={C.textMuted} />
               </div>
             </div>
