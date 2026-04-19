@@ -288,6 +288,7 @@ export default function AdminApp({ user, onLogout }) {
               contact={selectedContact}
               setPage={setPage}
               setSelectedContact={setSelectedContact}
+              user={user}
             />
           )}
           {page === "settings" && settingsTab === "org" && <OrgSettings />}

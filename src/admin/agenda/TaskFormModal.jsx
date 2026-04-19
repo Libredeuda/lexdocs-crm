@@ -37,7 +37,7 @@ const RECURRENCES = [
   { value: "monthly", label: "Mensual" },
 ];
 
-export default function TaskFormModal({ initialData = null, defaultDate = null, user, onClose, onSaved }) {
+export default function TaskFormModal({ initialData = null, defaultDate = null, defaultContactId = null, user, onClose, onSaved }) {
   const isEdit = !!initialData?.id;
 
   const [title, setTitle] = useState(initialData?.title || "");
@@ -113,6 +113,7 @@ export default function TaskFormModal({ initialData = null, defaultDate = null, 
         recurrence: recurrence || null,
         recurrence_until: recurrence ? (recurrenceUntil || null) : null,
         case_id: linkedCaseId || null,
+        contact_id: defaultContactId || initialData?.contact_id || null,
         created_by: authUser?.id || null,
       };
 

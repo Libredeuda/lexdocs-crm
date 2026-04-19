@@ -75,22 +75,46 @@ ALTER TABLE google_calendar_connections DISABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION create_next_recurrence(p_event_id uuid)
 RETURNS uuid AS $$
 DECLARE
-  v_event events%ROWTYPE;
+  r_case_id uuid;
+  r_org_id uuid;
+  r_title text;
+  r_description text;
+  r_event_type text;
+  r_event_date date;
+  r_event_time time;
+  r_assigned_to uuid;
+  r_created_by uuid;
+  r_recurrence text;
+  r_recurrence_until date;
+  r_reminder integer;
+  r_priority text;
+  r_duration integer;
+  r_location text;
+  r_parent_id uuid;
   v_new_id uuid;
   v_next_date date;
 BEGIN
-  SELECT * INTO v_event FROM events WHERE id = p_event_id;
-  IF v_event.recurrence IS NULL THEN RETURN NULL; END IF;
+  SELECT case_id, org_id, title, description, event_type, event_date, event_time,
+         assigned_to, created_by, recurrence, recurrence_until, reminder_minutes_before,
+         priority, duration_minutes, location, recurrence_parent_id
+  INTO r_case_id, r_org_id, r_title, r_description, r_event_type, r_event_date, r_event_time,
+       r_assigned_to, r_created_by, r_recurrence, r_recurrence_until, r_reminder,
+       r_priority, r_duration, r_location, r_parent_id
+  FROM events WHERE id = p_event_id;
 
-  v_next_date := CASE v_event.recurrence
-    WHEN 'daily' THEN v_event.event_date + INTERVAL '1 day'
-    WHEN 'weekly' THEN v_event.event_date + INTERVAL '1 week'
-    WHEN 'monthly' THEN v_event.event_date + INTERVAL '1 month'
-    ELSE NULL
-  END;
+  IF r_recurrence IS NULL THEN RETURN NULL; END IF;
 
-  IF v_next_date IS NULL THEN RETURN NULL; END IF;
-  IF v_event.recurrence_until IS NOT NULL AND v_next_date > v_event.recurrence_until THEN
+  IF r_recurrence = 'daily' THEN
+    v_next_date := r_event_date + INTERVAL '1 day';
+  ELSIF r_recurrence = 'weekly' THEN
+    v_next_date := r_event_date + INTERVAL '1 week';
+  ELSIF r_recurrence = 'monthly' THEN
+    v_next_date := r_event_date + INTERVAL '1 month';
+  ELSE
+    RETURN NULL;
+  END IF;
+
+  IF r_recurrence_until IS NOT NULL AND v_next_date > r_recurrence_until THEN
     RETURN NULL;
   END IF;
 
@@ -100,11 +124,11 @@ BEGIN
     priority, duration_minutes, location, recurrence_parent_id
   )
   VALUES (
-    v_event.case_id, v_event.org_id, v_event.title, v_event.description, v_event.event_type,
-    v_next_date, v_event.event_time, v_event.assigned_to, v_event.created_by,
-    v_event.recurrence, v_event.recurrence_until, v_event.reminder_minutes_before,
-    v_event.priority, v_event.duration_minutes, v_event.location,
-    COALESCE(v_event.recurrence_parent_id, v_event.id)
+    r_case_id, r_org_id, r_title, r_description, r_event_type,
+    v_next_date, r_event_time, r_assigned_to, r_created_by,
+    r_recurrence, r_recurrence_until, r_reminder,
+    r_priority, r_duration, r_location,
+    COALESCE(r_parent_id, p_event_id)
   )
   RETURNING id INTO v_new_id;
 

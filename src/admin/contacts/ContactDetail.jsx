@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import {
   ArrowLeft, Mail, Phone, Building2, Edit3, PhoneCall, Send,
-  UserCheck, Tag, Plus, Clock, FileText, MessageSquare, ChevronDown
+  UserCheck, Tag, Plus, Clock, FileText, MessageSquare, ChevronDown,
+  CheckSquare, Calendar, Briefcase, Paperclip, Upload, Download, Trash2, AlertCircle, Scale
 } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from "../../lib/supabase";
 import ContactForm from "./ContactForm";
+import TaskFormModal from "../agenda/TaskFormModal";
 
 const statusConfig = {
   lead: { label: 'Lead', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' },
@@ -21,7 +23,11 @@ const sourceLabels = {
   manual: 'Manual', whatsapp: 'WhatsApp', api: 'API',
 };
 
-export default function ContactDetail({ contact, setPage, setSelectedContact }) {
+const EVENT_ICON = { task: CheckSquare, call: Phone, meeting: Briefcase, deadline: AlertCircle, hearing: Scale };
+const EVENT_COLOR = { task: '#5B6BF0', call: '#3b82f6', meeting: '#7C5BF0', deadline: '#f59e0b', hearing: '#ef4444' };
+const EVENT_LABEL = { task: 'Tarea', call: 'Llamada', meeting: 'Reunión', deadline: 'Plazo', hearing: 'Vista' };
+
+export default function ContactDetail({ contact, setPage, setSelectedContact, user }) {
   const [data, setData] = useState({ ...contact });
   const [status, setStatus] = useState(contact.status);
   const [assignedTo, setAssignedTo] = useState(contact.assigned_to || "");
@@ -37,6 +43,12 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
   const [showEditForm, setShowEditForm] = useState(false);
   const [hoveredBtn, setHoveredBtn] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const st = statusConfig[status] || statusConfig.lead;
 
@@ -88,7 +100,104 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
     const { data: t } = await supabase.from('users').select('id, full_name, role');
     setTeam(t || []);
 
+    // Fetch events (tareas/reuniones) linked to this contact
+    const { data: ev } = await supabase
+      .from('events')
+      .select('*, assignee:users!events_assigned_to_fkey(full_name)')
+      .eq('contact_id', contact.id)
+      .order('event_date', { ascending: true })
+      .order('event_time', { ascending: true });
+    setEvents(ev || []);
+
+    // Fetch files linked to this contact
+    const { data: f } = await supabase
+      .from('documents')
+      .select('*, uploader:users!documents_uploaded_by_fkey(full_name)')
+      .eq('contact_id', contact.id)
+      .order('created_at', { ascending: false });
+    setFiles(f || []);
+
     setLoading(false);
+  }
+
+  function showToast(msg) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }
+
+  async function handleToggleEventCompleted(ev) {
+    await supabase.from('events')
+      .update({ is_completed: !ev.is_completed, completed_at: !ev.is_completed ? new Date().toISOString() : null })
+      .eq('id', ev.id);
+    loadData();
+  }
+
+  async function handleDeleteEvent(ev) {
+    if (!window.confirm(`¿Eliminar "${ev.title}"?`)) return;
+    await supabase.from('events').delete().eq('id', ev.id);
+    loadData();
+  }
+
+  async function handleFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const ext = file.name.split('.').pop();
+      const path = `contacts/${contact.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: false });
+      if (upErr) throw upErr;
+      const { error: insErr } = await supabase.from('documents').insert({
+        org_id: contact.org_id,
+        contact_id: contact.id,
+        name: file.name,
+        file_path: path,
+        storage_path: path,
+        file_size: file.size,
+        mime_type: file.type,
+        status: 'uploaded',
+        uploaded_by: userData?.user?.id || null,
+      });
+      if (insErr) throw insErr;
+      await supabase.from('activities').insert({
+        org_id: contact.org_id,
+        entity_type: 'contact',
+        entity_id: contact.id,
+        action: 'uploaded',
+        description: `Archivo subido: "${file.name}"`,
+      });
+      showToast('Archivo subido');
+      loadData();
+    } catch (err) {
+      console.error(err);
+      showToast('Error al subir: ' + (err.message || err));
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleDownloadFile(f) {
+    const { data, error } = await supabase.storage.from('documents').createSignedUrl(f.storage_path || f.file_path, 300);
+    if (error || !data?.signedUrl) { showToast('Error generando enlace'); return; }
+    window.open(data.signedUrl, '_blank');
+  }
+
+  async function handleDeleteFile(f) {
+    if (!window.confirm(`¿Eliminar "${f.name}"?`)) return;
+    if (f.storage_path || f.file_path) {
+      await supabase.storage.from('documents').remove([f.storage_path || f.file_path]);
+    }
+    await supabase.from('documents').delete().eq('id', f.id);
+    loadData();
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   }
 
   function getInitials() {
@@ -252,6 +361,24 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
 
   return (
     <div>
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: C.sidebar, color: "#fff", padding: "12px 24px", borderRadius: 12,
+          fontSize: 13, fontWeight: 500, zIndex: 9999, boxShadow: "0 8px 30px rgba(0,0,0,.2)",
+        }}>{toast}</div>
+      )}
+
+      {showTaskModal && (
+        <TaskFormModal
+          initialData={editingEvent}
+          defaultContactId={contact.id}
+          user={user || { org_id: contact.org_id }}
+          onClose={() => { setShowTaskModal(false); setEditingEvent(null); }}
+          onSaved={() => { setShowTaskModal(false); setEditingEvent(null); loadData(); }}
+        />
+      )}
+
       {showEditForm && (
         <ContactForm
           contact={data}
@@ -428,6 +555,126 @@ export default function ContactDetail({ contact, setPage, setSelectedContact }) 
             {notes.length === 0 && !loading && (
               <p style={{ fontSize: 12, color: C.textMuted, textAlign: "center", padding: 16 }}>Sin notas</p>
             )}
+          </Card>
+
+          {/* Tareas y reuniones */}
+          <Card title="Tareas y reuniones" icon={Calendar}>
+            <button
+              onClick={() => { setEditingEvent(null); setShowTaskModal(true); }}
+              style={{
+                width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px dashed ${C.border}`,
+                background: C.bg, color: C.primary, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                fontFamily: font, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                marginBottom: 12,
+              }}
+            >
+              <Plus size={14} /> Nueva tarea / reunión
+            </button>
+            {events.length === 0 && !loading && (
+              <p style={{ fontSize: 12, color: C.textMuted, textAlign: "center", padding: 16 }}>Sin tareas ni reuniones</p>
+            )}
+            {events.map(ev => {
+              const Icon = EVENT_ICON[ev.event_type] || CheckSquare;
+              const color = EVENT_COLOR[ev.event_type] || C.primary;
+              return (
+                <div key={ev.id} style={{
+                  display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px",
+                  background: C.bg, borderRadius: 10, marginBottom: 8,
+                  opacity: ev.is_completed ? 0.55 : 1,
+                  borderLeft: `3px solid ${color}`,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={!!ev.is_completed}
+                    onChange={() => handleToggleEventCompleted(ev)}
+                    style={{ marginTop: 3, cursor: "pointer", width: 15, height: 15, accentColor: color }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <Icon size={12} color={color} />
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                        {EVENT_LABEL[ev.event_type] || ev.event_type}
+                      </span>
+                      {ev.priority && ev.priority !== 'normal' && (
+                        <span style={{
+                          fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
+                          background: ev.priority === 'urgent' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+                          color: ev.priority === 'urgent' ? '#ef4444' : '#f59e0b',
+                          textTransform: "uppercase",
+                        }}>{ev.priority}</span>
+                      )}
+                    </div>
+                    <p style={{
+                      fontSize: 13, fontWeight: 600, color: C.text, margin: "3px 0 2px",
+                      textDecoration: ev.is_completed ? "line-through" : "none",
+                    }}>{ev.title}</p>
+                    <p style={{ fontSize: 11, color: C.textMuted, margin: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                        <Clock size={10} />
+                        {new Date(ev.event_date + "T00:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                        {ev.event_time && ` · ${ev.event_time.slice(0, 5)}`}
+                      </span>
+                      {ev.assignee?.full_name && <span>· {ev.assignee.full_name}</span>}
+                      {ev.recurrence && <span>· {ev.recurrence === 'daily' ? 'Diaria' : ev.recurrence === 'weekly' ? 'Semanal' : 'Mensual'}</span>}
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => { setEditingEvent(ev); setShowTaskModal(true); }} title="Editar" style={{
+                      padding: 5, borderRadius: 6, border: "none", background: "transparent",
+                      cursor: "pointer", color: C.textMuted, display: "flex", alignItems: "center",
+                    }}><Edit3 size={13} /></button>
+                    <button onClick={() => handleDeleteEvent(ev)} title="Eliminar" style={{
+                      padding: 5, borderRadius: 6, border: "none", background: "transparent",
+                      cursor: "pointer", color: C.textMuted, display: "flex", alignItems: "center",
+                    }}><Trash2 size={13} /></button>
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+
+          {/* Archivos adjuntos */}
+          <Card title="Archivos" icon={Paperclip}>
+            <label style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px dashed ${C.border}`,
+              background: C.bg, color: uploading ? C.textMuted : C.primary,
+              fontSize: 12.5, fontWeight: 600, cursor: uploading ? "wait" : "pointer",
+              fontFamily: font, marginBottom: 12,
+            }}>
+              <Upload size={14} /> {uploading ? "Subiendo..." : "Adjuntar archivo"}
+              <input type="file" onChange={handleFileUpload} disabled={uploading} style={{ display: "none" }} />
+            </label>
+            {files.length === 0 && !loading && (
+              <p style={{ fontSize: 12, color: C.textMuted, textAlign: "center", padding: 16 }}>Sin archivos</p>
+            )}
+            {files.map(f => (
+              <div key={f.id} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                background: C.bg, borderRadius: 10, marginBottom: 6,
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8, background: `${C.primary}14`,
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}>
+                  <FileText size={15} color={C.primary} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12.5, fontWeight: 600, color: C.text, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</p>
+                  <p style={{ fontSize: 10.5, color: C.textMuted, margin: "2px 0 0" }}>
+                    {formatBytes(f.file_size)}{f.uploader?.full_name ? ` · ${f.uploader.full_name}` : ''} · {new Date(f.created_at).toLocaleDateString("es-ES")}
+                  </p>
+                </div>
+                <button onClick={() => handleDownloadFile(f)} title="Descargar" style={{
+                  padding: 6, borderRadius: 7, border: "none", background: "transparent",
+                  cursor: "pointer", color: C.textMuted, display: "flex", alignItems: "center",
+                }}><Download size={14} /></button>
+                <button onClick={() => handleDeleteFile(f)} title="Eliminar" style={{
+                  padding: 6, borderRadius: 7, border: "none", background: "transparent",
+                  cursor: "pointer", color: C.textMuted, display: "flex", alignItems: "center",
+                }}><Trash2 size={14} /></button>
+              </div>
+            ))}
           </Card>
         </div>
 
