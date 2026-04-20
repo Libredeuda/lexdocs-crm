@@ -37,12 +37,18 @@ function renderTemplate(str: string, contact: any): string {
 }
 
 async function sendEmail(to: string, subject: string, html: string) {
-  if (!RESEND_API_KEY || !to) return;
-  await fetch("https://api.resend.com/emails", {
+  if (!RESEND_API_KEY) { console.error("sendEmail: no RESEND_API_KEY"); return { error: "no_api_key" }; }
+  if (!to) { console.error("sendEmail: no to"); return { error: "no_to" }; }
+  if (!html || html.trim().length === 0) { console.error("sendEmail: empty body"); return { error: "empty_body" }; }
+  const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
   });
+  const body = await res.text();
+  if (!res.ok) console.error("sendEmail failed:", res.status, body);
+  else console.log("sendEmail ok:", to, subject);
+  return { status: res.status, body };
 }
 
 async function sendWhatsapp(to: string, body: string) {
@@ -181,21 +187,28 @@ async function executeStep(run: any, step: any, workflow: any): Promise<{ advanc
         first_name: contact?.first_name, last_name: contact?.last_name, company: contact?.company,
         notes: contact?.notes, ai_tier: contact?.ai_tier,
       })}`;
+      const openingPrompt = config.opening_prompt ||
+        `Redacta el primer mensaje de contacto con este lead. Sé cercano, concreto y útil. Preséntate, muestra que entiendes su situación con la información disponible, haz 1 pregunta cualificadora. NO uses plantillas genéricas. Responde SOLO con el cuerpo del mensaje (sin asunto, sin saludos tipo "Hola, soy [nombre]:" previos, sin meta-comentarios). Entre 60 y 120 palabras.`;
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
           model: "claude-sonnet-4-5-20250929",
-          max_tokens: 500,
+          max_tokens: 800,
           system: sys,
-          messages: [{ role: "user", content: config.opening_prompt || "Genera el primer mensaje de contacto con este lead." }],
+          messages: [{ role: "user", content: openingPrompt }],
         }),
       });
       const data = await res.json();
-      const text = data.content?.map((b: any) => b.text || "").join("") || "";
-      const channel = config.channel || agent.default_channel || "email";
+      console.log("Claude ai_message response:", JSON.stringify(data).slice(0, 500));
+      let text = data.content?.map((b: any) => b.text || "").join("").trim() || "";
+      if (!text || text.length < 10) {
+        console.error("Empty Claude reply, using fallback");
+        text = `Hola ${contact?.first_name || ""},\n\nSoy ${agent.name || "Carlota"} del despacho. Vi que te interesa resolver tu situación de deuda y quería ponerme en contacto contigo para entender mejor tu caso y ver cómo podemos ayudarte con la Ley de Segunda Oportunidad.\n\n¿Podrías contarme brevemente cuál es tu situación actual (importe aproximado de deuda y si estás trabajando)?\n\nUn saludo,\n${agent.name || "Carlota"}`;
+      }
+      const channel = config.channel || (agent.channels && agent.channels[0]) || "email";
       // Create conversation
-      const { data: conv } = await supabase.from("ai_conversations").insert({
+      const { data: conv, error: convErr } = await supabase.from("ai_conversations").insert({
         org_id: workflow.org_id,
         agent_id: agent.id,
         contact_id: run.contact_id,
@@ -204,16 +217,23 @@ async function executeStep(run: any, step: any, workflow: any): Promise<{ advanc
         message_count: 1,
         last_message_at: new Date().toISOString(),
       }).select("id").single();
+      if (convErr) console.error("ai_conversations insert error:", convErr);
       if (conv) {
-        await supabase.from("ai_messages").insert({
-          conversation_id: conv.id, role: "agent", content: text,
+        const { error: msgErr } = await supabase.from("ai_messages").insert({
+          conversation_id: conv.id, role: "agent", content: text, channel,
         });
+        if (msgErr) console.error("ai_messages insert error:", msgErr);
       }
       // Send
       if (channel === "email" && contact?.email) {
-        await sendEmail(contact.email, config.subject || "Hola", text);
+        const subject = config.subject || `${agent.name || "Carlota"} · ${contact.first_name || "Hola"}`;
+        const html = text.replace(/\n/g, "<br>");
+        const emailRes = await sendEmail(contact.email, subject, html);
+        console.log("Email result:", JSON.stringify(emailRes));
       } else if (channel === "whatsapp" && (contact?.phone || contact?.whatsapp)) {
         await sendWhatsapp(contact.whatsapp || contact.phone, text);
+      } else {
+        console.error("No channel match or missing contact info", { channel, email: contact?.email, phone: contact?.phone });
       }
       return { advance: true };
     }
@@ -336,7 +356,7 @@ async function processRun(run: any) {
   await supabase.from("automation_runs").update({
     current_step: nextOrder,
     next_run_at: nextRunAt,
-    last_step_at: new Date().toISOString(),
+    last_action_at: new Date().toISOString(),
   }).eq("id", run.id);
 }
 
