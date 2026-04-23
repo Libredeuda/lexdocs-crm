@@ -33,9 +33,11 @@ export default function WorkflowsList({ user }) {
 
   async function load() {
     setLoading(true);
-    const q = supabase.from("automation_workflows").select("*").order("created_at", { ascending: false });
-    if (user?.org_id) q.eq("org_id", user.org_id);
-    const { data } = await q;
+    if (!user?.org_id) { setWorkflows([]); setLoading(false); return; }
+    const { data } = await supabase.from("automation_workflows")
+      .select("*")
+      .eq("org_id", user.org_id)
+      .order("created_at", { ascending: false });
     setWorkflows(data || []);
 
     if (data?.length) {
@@ -51,14 +53,22 @@ export default function WorkflowsList({ user }) {
   }
 
   async function toggleActive(w) {
-    await supabase.from("automation_workflows").update({ is_active: !w.is_active }).eq("id", w.id);
+    if (!user?.org_id) return;
+    await supabase.from("automation_workflows")
+      .update({ is_active: !w.is_active })
+      .eq("id", w.id)
+      .eq("org_id", user.org_id);
     load();
   }
 
   async function handleDelete(w) {
     if (!window.confirm(`¿Eliminar workflow "${w.name}"?`)) return;
-    await supabase.from("automation_steps").delete().eq("workflow_id", w.id);
-    await supabase.from("automation_workflows").delete().eq("id", w.id);
+    if (!user?.org_id) return;
+    // Los steps se borran en cascada vía FK, pero filtramos por workflow propio.
+    await supabase.from("automation_workflows")
+      .delete()
+      .eq("id", w.id)
+      .eq("org_id", user.org_id);
     load();
   }
 

@@ -29,18 +29,47 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { paymentId, successUrl, cancelUrl, email } = await req.json();
+    // 1. Autenticar al caller
+    const authHeader = req.headers.get("authorization") || "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    if (!jwt) throw new Error("Authentication required");
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
+    if (authErr || !user) throw new Error("Invalid session");
+
+    const { paymentId, successUrl, cancelUrl } = await req.json();
 
     if (!paymentId) throw new Error("paymentId is required");
 
     const { data: payment, error: payErr } = await supabase
       .from("payments")
-      .select("*, case:cases(contact:contacts(first_name, last_name, email))")
+      .select("*, case:cases(org_id, contact:contacts(first_name, last_name, email))")
       .eq("id", paymentId)
       .single();
 
     if (payErr || !payment) throw new Error("Payment not found");
     if (payment.status === "paid") throw new Error("Already paid");
+
+    // 2. Autorización: staff de la org O cliente dueño del caso
+    const callerEmail = (user.email || "").toLowerCase();
+    const contactEmail = (payment.case?.contact?.email || "").toLowerCase();
+    const isOwnerContact = callerEmail && contactEmail && callerEmail === contactEmail;
+
+    let isStaffOfOrg = false;
+    if (!isOwnerContact) {
+      const { data: staff } = await supabase
+        .from("users")
+        .select("org_id")
+        .eq("id", user.id)
+        .eq("org_id", payment.case?.org_id)
+        .maybeSingle();
+      isStaffOfOrg = !!staff;
+    }
+
+    if (!isOwnerContact && !isStaffOfOrg) {
+      throw new Error("Not authorized to pay this installment");
+    }
+
+    const email = user.email || payment.case?.contact?.email || "";
 
     const amountCents = Math.round(parseFloat(payment.amount) * 100);
     if (!amountCents || amountCents <= 0) throw new Error("Invalid payment amount");

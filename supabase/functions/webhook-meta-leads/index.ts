@@ -14,8 +14,36 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") || "libreapp_meta_2026"; // Token configurable
 const META_PAGE_ACCESS_TOKEN = Deno.env.get("META_PAGE_ACCESS_TOKEN"); // Para descargar lead full
+const META_APP_SECRET = Deno.env.get("META_APP_SECRET"); // App Secret de Meta — para verificar firma HMAC
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Verifica la firma HMAC-SHA256 que Meta envía en cabecera X-Hub-Signature-256.
+// Si META_APP_SECRET no está configurado: warning + skip (modo desarrollo).
+async function verifyMetaSignature(rawBody: string, signatureHeader: string | null): Promise<boolean> {
+  if (!META_APP_SECRET) {
+    console.warn("⚠️ META_APP_SECRET no configurado: firma NO verificada (solo dev). Configúralo en producción.");
+    return true;
+  }
+  if (!signatureHeader) {
+    console.error("Firma ausente en X-Hub-Signature-256");
+    return false;
+  }
+  const expected = signatureHeader.startsWith("sha256=") ? signatureHeader.slice(7) : signatureHeader;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(META_APP_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+  const computed = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  if (computed.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
 
 serve(async (req: Request) => {
   const url = new URL(req.url);
@@ -44,7 +72,17 @@ serve(async (req: Request) => {
 
   try {
     const tenantSlug = url.searchParams.get("tenant_slug") || "libredeuda";
-    const body = await req.json();
+
+    // Leer cuerpo en bruto (necesario para HMAC) y verificar firma ANTES de parsear
+    const rawBody = await req.text();
+    const signatureHeader = req.headers.get("x-hub-signature-256");
+    const signatureValid = await verifyMetaSignature(rawBody, signatureHeader);
+    if (!signatureValid) {
+      console.error("HMAC inválida — posible intento de forja de webhook", { tenantSlug });
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    const body = JSON.parse(rawBody);
 
     // Resolver tenant + org
     const { data: tenant } = await supabase

@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,11 +68,37 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { planId, tenantId, tenantSlug, email, successUrl, cancelUrl } = await req.json();
+    // 1. Autenticar al caller con el JWT que llega en Authorization
+    const authHeader = req.headers.get("authorization") || "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    if (!jwt) throw new Error("Authentication required");
+    const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(jwt);
+    if (authErr || !user) throw new Error("Invalid session");
+
+    const { planId, successUrl, cancelUrl } = await req.json();
 
     if (!planId || !PLAN_PRICES[planId]) {
       throw new Error("Invalid plan");
     }
+
+    // 2. Resolver tenant del CALLER (NO del body — el cliente no decide tenant)
+    const { data: userRow, error: userErr } = await supabaseAdmin
+      .from("users")
+      .select("email, role, org_id, organizations!inner(tenant_id, tenants!inner(id, slug))")
+      .eq("id", user.id)
+      .single();
+    if (userErr || !userRow) throw new Error("User profile not found");
+
+    // 3. Sólo admins pueden cambiar el plan del tenant
+    if (userRow.role !== "admin" && userRow.role !== "owner") {
+      throw new Error("Only admins can change subscription plan");
+    }
+
+    const org: any = userRow.organizations;
+    const tenant: any = org?.tenants;
+    const tenantId = tenant?.id;
+    const tenantSlug = tenant?.slug;
+    const email = userRow.email || user.email || "";
 
     const priceId = await getOrCreatePrice(planId);
 

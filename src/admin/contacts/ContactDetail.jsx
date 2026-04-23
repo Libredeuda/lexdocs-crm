@@ -68,8 +68,12 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
         body: JSON.stringify({ contact_id: contact.id }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // Reload contact data
-      const { data: updated } = await supabase.from('contacts').select('*').eq('id', contact.id).single();
+      // Reload contact data (scoped por org)
+      const { data: updated } = await supabase
+        .from('contacts').select('*')
+        .eq('id', contact.id)
+        .eq('org_id', contact.org_id)
+        .single();
       if (updated) setData(prev => ({ ...prev, ...updated }));
       showToast('Score recalculado');
     } catch (err) {
@@ -111,8 +115,8 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
       .eq('contact_id', contact.id);
     setTags((contactTags || []).map(ct => ct.tags));
 
-    // Fetch all available tags
-    const { data: at } = await supabase.from('tags').select('*');
+    // Fetch all available tags (scoped por org)
+    const { data: at } = await supabase.from('tags').select('*').eq('org_id', contact.org_id);
     setAllTags(at || []);
 
     // Fetch notes for this contact

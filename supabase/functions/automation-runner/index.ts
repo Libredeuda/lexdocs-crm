@@ -360,6 +360,8 @@ async function processRun(run: any) {
   }).eq("id", run.id);
 }
 
+const CRON_SECRET = Deno.env.get("CRON_SECRET");
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -370,13 +372,26 @@ serve(async (req: Request) => {
       try { body = await req.json(); } catch { body = null; }
     }
 
-    // TRIGGER MODE
+    const authHeader = req.headers.get("authorization") || "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    const cronHeader = req.headers.get("x-cron-secret") || "";
+
+    // TRIGGER MODE — usuario autenticado disparando workflow para un contact de SU org
     if (body && body.trigger_type && body.contact_id) {
-      const { data: contact } = await supabase.from("contacts").select("*").eq("id", body.contact_id).single();
-      if (!contact) throw new Error("contact not found");
+      if (!jwt) throw new Error("Authentication required");
+      const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
+      if (authErr || !user) throw new Error("Invalid session");
+      const { data: staff } = await supabase.from("users").select("org_id").eq("id", user.id).maybeSingle();
+      if (!staff) throw new Error("User profile not found");
+
+      const { data: contact } = await supabase.from("contacts")
+        .select("*").eq("id", body.contact_id).eq("org_id", staff.org_id).single();
+      if (!contact) throw new Error("contact not found or not in your org");
+
       const { data: workflows } = await supabase.from("automation_workflows")
         .select("*")
         .eq("is_active", true)
+        .eq("org_id", staff.org_id)
         .eq("trigger_type", body.trigger_type);
       let started = 0;
       for (const wf of workflows || []) {
@@ -411,7 +426,16 @@ serve(async (req: Request) => {
       });
     }
 
-    // CRON MODE
+    // CRON MODE — requiere CRON_SECRET (configurado en pg_cron / cron externo)
+    if (CRON_SECRET && cronHeader !== CRON_SECRET) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!CRON_SECRET) {
+      console.warn("⚠️ CRON_SECRET no configurado: cron mode está abierto a cualquiera. Configúralo en producción.");
+    }
+
     const { data: runs } = await supabase.from("automation_runs")
       .select("*")
       .eq("status", "running")

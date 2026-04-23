@@ -130,16 +130,22 @@ export default function TemplatesList({ user }) {
 
   async function load() {
     setLoading(true);
-    const q = supabase.from("message_templates").select("*").order("created_at", { ascending: false });
-    if (user?.org_id) q.eq("org_id", user.org_id);
-    const { data } = await q;
+    if (!user?.org_id) { setTemplates([]); setLoading(false); return; }
+    const { data } = await supabase.from("message_templates")
+      .select("*")
+      .eq("org_id", user.org_id)
+      .order("created_at", { ascending: false });
     setTemplates(data || []);
     setLoading(false);
   }
 
   async function handleDelete(t) {
     if (!window.confirm(`¿Eliminar plantilla "${t.name}"?`)) return;
-    await supabase.from("message_templates").delete().eq("id", t.id);
+    if (!user?.org_id) return;
+    await supabase.from("message_templates")
+      .delete()
+      .eq("id", t.id)
+      .eq("org_id", user.org_id);
     load();
   }
 

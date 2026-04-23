@@ -909,13 +909,18 @@ function Payments({user, firstName}){
     setProcessing(paymentId);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        setToast('Sesión expirada. Vuelve a entrar.');
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
       const res = await fetch(`${supabaseUrl}/functions/v1/pay-installment`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify({
           paymentId,
-          email: user.email,
           successUrl: `${window.location.origin}${window.location.pathname}?paid=${paymentId}`,
           cancelUrl: window.location.href,
         }),
@@ -1178,8 +1183,12 @@ function Chat({messages,setMessages,docs,user,caseLabel}){
     setLd(true);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const firstName = (user.full_name || user.name || '').split(" ")[0] || "cliente";
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        setMessages(p => [...p, { role: "assistant", content: "Tu sesión ha caducado. Vuelve a entrar con tu email." }]);
+        return;
+      }
       const apiMessages = [...messages.slice(-10), { role: "user", content: msg }].map(m => ({ role: m.role, content: m.content }));
       const contextNote = `\n\nContexto extra del cliente (usa solo si es relevante): Exp ${user.caseId || 'N/A'} · ${caseLabel} · Letrado: ${user.lawyer || 'Sin asignar'}.\nDocumentos:\n${docCtx}${payCtx}`;
       const messagesWithContext = apiMessages.length === 1
@@ -1188,12 +1197,10 @@ function Chat({messages,setMessages,docs,user,caseLabel}){
 
       const res = await fetch(`${supabaseUrl}/functions/v1/carlota-chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
         body: JSON.stringify({
           messages: messagesWithContext,
-          userRole: user.role || "client",
           currentModule: "lexdocs",
-          firstName,
           currentContext: { caseId: user.caseId, caseType: user.caseType || 'lso' },
         }),
       });

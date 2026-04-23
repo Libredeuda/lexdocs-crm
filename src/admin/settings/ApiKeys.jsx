@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { C } from "../../constants";
 import { supabase } from "../../lib/supabase";
+import { getCurrentOrgId } from "../../lib/currentOrg";
 
 const font = "'Poppins', sans-serif";
 const mono = "'SF Mono', 'Fira Code', 'Courier New', monospace";
@@ -442,9 +443,17 @@ function ApiKeysTab({ copiedId, onCopy, showToast }) {
 
   const fetchKeys = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("api_keys").select("*").order("created_at", { ascending: false });
-    if (!error && data) setKeys(data);
-    else setKeys([]);
+    try {
+      const orgId = await getCurrentOrgId();
+      const { data, error } = await supabase.from("api_keys")
+        .select("*")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false });
+      if (!error && data) setKeys(data);
+      else setKeys([]);
+    } catch {
+      setKeys([]);
+    }
     setLoading(false);
   }, []);
 
@@ -456,8 +465,9 @@ function ApiKeysTab({ copiedId, onCopy, showToast }) {
     const keyHash = await hashKey(rawKey);
     const prefix = rawKey.slice(0, 12) + "...";
 
-    const { data: userData } = await supabase.auth.getUser();
-    const orgId = userData?.user?.user_metadata?.org_id || null;
+    let orgId;
+    try { orgId = await getCurrentOrgId(); }
+    catch { showToast("No se pudo identificar tu despacho"); return; }
 
     const { error } = await supabase.from("api_keys").insert({
       name: newName,
@@ -480,7 +490,12 @@ function ApiKeysTab({ copiedId, onCopy, showToast }) {
   };
 
   const revokeKey = async (id) => {
-    const { error } = await supabase.from("api_keys").update({ is_active: false }).eq("id", id);
+    let orgId;
+    try { orgId = await getCurrentOrgId(); } catch { return; }
+    const { error } = await supabase.from("api_keys")
+      .update({ is_active: false })
+      .eq("id", id)
+      .eq("org_id", orgId);
     if (!error) {
       showToast("API Key revocada");
       fetchKeys();

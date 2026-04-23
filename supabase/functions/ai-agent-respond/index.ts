@@ -78,6 +78,8 @@ async function performHandoff(conv: any, agent: any, contact: any, reason: strin
   }
 }
 
+const INTERNAL_FUNCTION_SECRET = Deno.env.get("INTERNAL_FUNCTION_SECRET");
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -88,6 +90,34 @@ serve(async (req: Request) => {
     const { data: conv, error: convErr } = await supabase.from("ai_conversations")
       .select("*").eq("id", conversation_id).single();
     if (convErr || !conv) throw new Error("conversation not found");
+
+    // Autorización: (a) llamada interna con INTERNAL_FUNCTION_SECRET, o
+    // (b) usuario autenticado que pertenece a la org de la conversación.
+    const internalSecret = req.headers.get("x-internal-secret") || "";
+    const authHeader = req.headers.get("authorization") || "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+
+    let authorized = false;
+    if (INTERNAL_FUNCTION_SECRET && internalSecret === INTERNAL_FUNCTION_SECRET) {
+      authorized = true;
+    } else if (jwt) {
+      const { data: { user } } = await supabase.auth.getUser(jwt);
+      if (user) {
+        const { data: staff } = await supabase.from("users")
+          .select("org_id").eq("id", user.id).maybeSingle();
+        if (staff?.org_id === conv.org_id) authorized = true;
+      }
+    }
+    if (!authorized) {
+      if (!INTERNAL_FUNCTION_SECRET) {
+        console.warn("⚠️ INTERNAL_FUNCTION_SECRET no configurado: llamadas internas sin auth siguen aceptándose. Configúralo en producción.");
+        authorized = true; // Backwards compat hasta configurar secret
+      } else {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     if (conv.status === "handoff" || conv.status === "closed") {
       return new Response(JSON.stringify({ success: true, action: "skipped", reason: conv.status }), {

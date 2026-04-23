@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../supabase';
+import { getCurrentOrgId } from '../currentOrg';
 
 export function useContacts() {
   const [contacts, setContacts] = useState([]);
@@ -11,9 +12,11 @@ export function useContacts() {
     setLoading(true);
     setError(null);
     try {
+      const orgId = await getCurrentOrgId();
       let query = supabase
         .from('contacts')
-        .select('*, assigned_user:users!contacts_assigned_to_fkey(full_name, email)', { count: 'exact' });
+        .select('*, assigned_user:users!contacts_assigned_to_fkey(full_name, email)', { count: 'exact' })
+        .eq('org_id', orgId);
 
       if (params.status && params.status !== 'all') {
         query = query.eq('status', params.status);
@@ -53,19 +56,22 @@ export function useContacts() {
   }, []);
 
   const getContact = useCallback(async (id) => {
+    const orgId = await getCurrentOrgId();
     const { data, error } = await supabase
       .from('contacts')
       .select('*, assigned_user:users!contacts_assigned_to_fkey(id, full_name, email)')
       .eq('id', id)
+      .eq('org_id', orgId)
       .single();
     if (error) throw error;
     return data;
   }, []);
 
   const createContact = useCallback(async (contactData) => {
+    const orgId = await getCurrentOrgId();
     const { data, error } = await supabase
       .from('contacts')
-      .insert(contactData)
+      .insert({ ...contactData, org_id: orgId })
       .select()
       .single();
     if (error) throw error;
@@ -73,10 +79,12 @@ export function useContacts() {
   }, []);
 
   const updateContact = useCallback(async (id, updates) => {
+    const orgId = await getCurrentOrgId();
     const { data, error } = await supabase
       .from('contacts')
       .update(updates)
       .eq('id', id)
+      .eq('org_id', orgId)
       .select()
       .single();
     if (error) throw error;
@@ -84,10 +92,12 @@ export function useContacts() {
   }, []);
 
   const deleteContact = useCallback(async (id) => {
+    const orgId = await getCurrentOrgId();
     const { error } = await supabase
       .from('contacts')
       .update({ status: 'archived' })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('org_id', orgId);
     if (error) throw error;
   }, []);
 

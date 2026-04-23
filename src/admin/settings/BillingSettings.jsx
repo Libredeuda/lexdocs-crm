@@ -88,21 +88,19 @@ export default function BillingSettings() {
     setToast("Redirigiendo a Stripe...");
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
 
-      // Try Edge Function
-      if (supabaseUrl) {
+      // Try Edge Function (requires authenticated session — sólo admins)
+      if (supabaseUrl && accessToken) {
         const res = await fetch(`${supabaseUrl}/functions/v1/stripe-checkout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             planId,
-            tenantId: tenant?.id,
-            tenantSlug: tenant?.slug,
-            email: '',
             successUrl: window.location.origin + '?checkout=success&plan=' + planId,
             cancelUrl: window.location.href,
           }),

@@ -25,21 +25,31 @@ export default function AiAgentsList({ user }) {
 
   async function load() {
     setLoading(true);
-    const q = supabase.from("ai_agents").select("*").order("created_at", { ascending: false });
-    if (user?.org_id) q.eq("org_id", user.org_id);
-    const { data } = await q;
+    if (!user?.org_id) { setAgents([]); setLoading(false); return; }
+    const { data } = await supabase.from("ai_agents")
+      .select("*")
+      .eq("org_id", user.org_id)
+      .order("created_at", { ascending: false });
     setAgents(data || []);
     setLoading(false);
   }
 
   async function toggleActive(a) {
-    await supabase.from("ai_agents").update({ is_active: !a.is_active }).eq("id", a.id);
+    if (!user?.org_id) return;
+    await supabase.from("ai_agents")
+      .update({ is_active: !a.is_active })
+      .eq("id", a.id)
+      .eq("org_id", user.org_id);
     load();
   }
 
   async function handleDelete(a) {
     if (!window.confirm(`¿Eliminar agente "${a.name}"?`)) return;
-    await supabase.from("ai_agents").delete().eq("id", a.id);
+    if (!user?.org_id) return;
+    await supabase.from("ai_agents")
+      .delete()
+      .eq("id", a.id)
+      .eq("org_id", user.org_id);
     load();
   }
 
