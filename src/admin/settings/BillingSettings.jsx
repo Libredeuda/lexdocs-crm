@@ -143,16 +143,19 @@ export default function BillingSettings({ user }) {
           cancelUrl: window.location.href,
         }),
       });
-      const data = await res.json();
-      if (data.success && data.url) {
+      let data;
+      try { data = await res.json(); } catch { data = { error: `HTTP ${res.status}` }; }
+      console.log("[stripe-checkout] response:", res.status, data);
+      if (data?.success && data?.url) {
         window.location.href = data.url;
         return;
       }
-      setToast(data.error || "No se pudo crear la sesión de pago");
+      setToast(data?.error ? `Error: ${data.error}` : `No se pudo crear la sesión (HTTP ${res.status})`);
     } catch (e) {
-      setToast("Error al crear la sesión de pago");
+      console.error("[stripe-checkout] fetch error:", e);
+      setToast("Error de conexión: " + (e.message || e));
     }
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), 6000);
   }
 
   function computeTotal(plan, q, c) {
