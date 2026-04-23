@@ -831,10 +831,12 @@ function Cal({events}){
 function Payments({user, firstName}){
   const [payments, setPayments] = useState([]);
   const [caseInfo, setCaseInfo] = useState(null);
+  const [contactBilling, setContactBilling] = useState(null); // datos del contact: preferred_payment_method, billing_iban...
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(null);
   const [toast, setToast] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [methodModalOpen, setMethodModalOpen] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -845,11 +847,12 @@ function Payments({user, firstName}){
           if (user?.email) {
             const { data: contact } = await supabase
               .from('contacts')
-              .select('id')
+              .select('id, preferred_payment_method, billing_iban, billing_account_holder, sepa_mandate_signed_at, sepa_mandate_reference')
               .eq('email', user.email)
               .limit(1)
               .maybeSingle();
             contactId = contact?.id || null;
+            if (contact) setContactBilling(contact);
           }
 
           let caseRow = null;
@@ -988,11 +991,28 @@ function Payments({user, firstName}){
     : normalized.reduce((a,p) => a + p.amount, 0);
   const pct = totalContracted > 0 ? Math.round(totalPaid/totalContracted*100) : 0;
 
-  const methodKey = usesMock
-    ? mockData.method
-    : (pending.find(p => p.payment_method)?.payment_method || paid[0]?.payment_method || 'direct_debit');
+  // El método preferido se lee del contact (persistente). Si no hay, se
+  // deduce del último payment. Si todo falla, domiciliación por defecto.
+  const methodKey = contactBilling?.preferred_payment_method
+    || (usesMock ? mockData.method : null)
+    || pending.find(p => p.payment_method)?.payment_method
+    || paid[0]?.payment_method
+    || 'direct_debit';
   const method = methodInfo[methodKey] || methodInfo.direct_debit;
   const MethodIcon = method.icon;
+
+  // Estado de facturación: al corriente / pago próximo / en demora
+  const today = new Date(); today.setHours(0,0,0,0);
+  const overdue = normalized.filter(p => {
+    if (p.status === "paid") return false;
+    if (!p.dateStr) return false;
+    return new Date(p.dateStr) < today;
+  });
+  const billingStatus = overdue.length > 0
+    ? { key: "overdue", label: "En demora", color: C.red, bg: C.redSoft || `${C.red}15`, desc: `Tienes ${overdue.length} cuota${overdue.length>1?'s':''} vencida${overdue.length>1?'s':''}` }
+    : (upcoming && daysUntil(upcoming.dateStr) <= 7)
+      ? { key: "due_soon", label: "Pago próximo", color: C.orange, bg: C.orangeSoft, desc: `Próximo cargo: ${fmtMoney(upcoming.amount)}` }
+      : { key: "current", label: "Al corriente de pago", color: C.teal, bg: C.tealSoft, desc: "Todas tus cuotas están al día" };
 
   const ibanDisplay = usesMock ? mockData.iban : '—';
   const beneficiary = usesMock ? mockData.beneficiary : '';
@@ -1010,8 +1030,11 @@ function Payments({user, firstName}){
       <div style={{position:"absolute",top:-30,right:-30,width:140,height:140,borderRadius:"50%",background:"rgba(255,255,255,.08)"}}/>
       <div style={{position:"absolute",bottom:-20,right:60,width:90,height:90,borderRadius:"50%",background:"rgba(255,255,255,.05)"}}/>
       <div style={{position:"relative"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
           <Wallet size={16}/><span style={{fontSize:12,fontWeight:500,opacity:.8}}>TOTAL CONTRATADO</span>
+          <span style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,background:"rgba(255,255,255,.18)",fontSize:11,fontWeight:600,letterSpacing:".02em"}}>
+            {billingStatus.key === "current" ? "✓" : billingStatus.key === "due_soon" ? "⏱" : "⚠"} {billingStatus.label}
+          </span>
         </div>
         <p style={{fontSize:32,fontWeight:700,lineHeight:1.1}}>{fmtMoney(totalContracted)}</p>
         <div style={{marginTop:18,display:"flex",alignItems:"center",gap:12}}>
@@ -1080,18 +1103,56 @@ function Payments({user, firstName}){
       );
     })()}
 
-    {/* Método de pago */}
-    <div style={{background:C.card,borderRadius:14,padding:"18px 22px",marginBottom:16,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:14}}>
-      <div style={{width:42,height:42,borderRadius:10,background:`linear-gradient(135deg,${C.primary}15,${C.violet}10)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <MethodIcon size={20} color={C.primary}/>
+    {/* Facturación: método de pago + IBAN (si domiciliación) */}
+    <div style={{background:C.card,borderRadius:14,padding:"18px 22px",marginBottom:16,border:`1px solid ${C.border}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:14}}>
+        <div style={{width:42,height:42,borderRadius:10,background:`linear-gradient(135deg,${C.primary}15,${C.violet}10)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <MethodIcon size={20} color={C.primary}/>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{fontSize:11,color:C.textMuted,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Facturación · Método de pago</p>
+          <p style={{fontSize:14,fontWeight:600,marginTop:2}}>{method.label}</p>
+          <p style={{fontSize:12,color:C.textMuted,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{method.desc}</p>
+        </div>
+        <button
+          onClick={()=>setMethodModalOpen(true)}
+          style={{padding:"8px 14px",borderRadius:8,fontSize:12,fontWeight:500,background:C.bg,color:C.text,border:`1px solid ${C.border}`,cursor:"pointer"}}
+        >Cambiar</button>
       </div>
-      <div style={{flex:1}}>
-        <p style={{fontSize:11,color:C.textMuted,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Método de pago</p>
-        <p style={{fontSize:14,fontWeight:600,marginTop:2}}>{method.label}</p>
-        <p style={{fontSize:12,color:C.textMuted,marginTop:2}}>{method.desc}{ibanDisplay && ibanDisplay !== '—' ? ` · ${ibanDisplay}` : ''}</p>
-      </div>
-      <button style={{padding:"8px 14px",borderRadius:8,fontSize:12,fontWeight:500,background:C.bg,color:C.text,border:`1px solid ${C.border}`}}>Cambiar</button>
+
+      {/* Si es domiciliación, mostrar IBAN + mandato */}
+      {methodKey === "direct_debit" && (contactBilling?.billing_iban || ibanDisplay !== '—') && (
+        <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${C.bg}`,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,fontSize:12}}>
+          <div>
+            <p style={{fontSize:10.5,color:C.textMuted,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>IBAN</p>
+            <p style={{fontFamily:"monospace",fontSize:13,fontWeight:500,marginTop:3}}>{contactBilling?.billing_iban || ibanDisplay}</p>
+          </div>
+          {contactBilling?.billing_account_holder && (
+            <div>
+              <p style={{fontSize:10.5,color:C.textMuted,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Titular</p>
+              <p style={{fontSize:13,marginTop:3}}>{contactBilling.billing_account_holder}</p>
+            </div>
+          )}
+          <div>
+            <p style={{fontSize:10.5,color:C.textMuted,textTransform:"uppercase",letterSpacing:".05em",fontWeight:500}}>Mandato SEPA</p>
+            <p style={{fontSize:13,marginTop:3,color:contactBilling?.sepa_mandate_signed_at?C.teal:C.orange,fontWeight:500}}>
+              {contactBilling?.sepa_mandate_signed_at
+                ? `✓ Firmado ${new Date(contactBilling.sepa_mandate_signed_at).toLocaleDateString("es-ES")}`
+                : "Pendiente de firma"}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
+
+    {methodModalOpen && (
+      <PaymentMethodModal
+        contactId={contactBilling?.id || null}
+        current={contactBilling}
+        onClose={()=>setMethodModalOpen(false)}
+        onSaved={(next)=>{ setContactBilling(prev => ({...prev, ...next})); setMethodModalOpen(false); setToast('Método de pago actualizado'); setTimeout(()=>setToast(null),4000); }}
+      />
+    )}
 
     {/* Historial de pagos */}
     <div style={{background:C.card,borderRadius:14,padding:"20px 22px",border:`1px solid ${C.border}`}}>
@@ -1166,6 +1227,131 @@ function Payments({user, firstName}){
 
     {toast && <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:C.sidebar,color:"#fff",padding:"12px 24px",borderRadius:12,fontSize:13,fontWeight:500,zIndex:999,boxShadow:"0 8px 30px rgba(0,0,0,.2)",maxWidth:"90%",textAlign:"center"}}>{toast}</div>}
   </div>);
+}
+
+// ════ MODAL: CAMBIAR MÉTODO DE PAGO ════
+function PaymentMethodModal({ contactId, current, onClose, onSaved }) {
+  const [method, setMethod] = useState(current?.preferred_payment_method || 'direct_debit');
+  const [iban, setIban] = useState(current?.billing_iban || '');
+  const [holder, setHolder] = useState(current?.billing_account_holder || '');
+  const [mandateConsent, setMandateConsent] = useState(!!current?.sepa_mandate_signed_at);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const normalizedIban = iban.replace(/\s+/g, '').toUpperCase();
+  // Validación básica IBAN español (ES + 22 dígitos) o formato genérico (>=15 chars alfanumérico)
+  const isIbanValid = /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(normalizedIban);
+
+  async function handleSave() {
+    setError(null);
+    if (method === 'direct_debit') {
+      if (!isIbanValid) { setError('IBAN no válido'); return; }
+      if (!holder.trim()) { setError('Indica el titular de la cuenta'); return; }
+      if (!mandateConsent) { setError('Debes autorizar la domiciliación SEPA'); return; }
+    }
+    if (!contactId) { setError('No se pudo identificar tu ficha de cliente'); return; }
+    setSaving(true);
+    try {
+      const updates = { preferred_payment_method: method };
+      if (method === 'direct_debit') {
+        updates.billing_iban = normalizedIban;
+        updates.billing_account_holder = holder.trim();
+        if (mandateConsent && !current?.sepa_mandate_signed_at) {
+          updates.sepa_mandate_signed_at = new Date().toISOString();
+          updates.sepa_mandate_reference = `SEPA-${Date.now().toString(36).toUpperCase()}`;
+        }
+      } else {
+        // Al cambiar a otro método no borramos el IBAN: queda guardado por si vuelve.
+      }
+      const { data, error: upErr } = await supabase
+        .from('contacts').update(updates).eq('id', contactId).select().single();
+      if (upErr) throw upErr;
+      onSaved(data);
+    } catch (e) {
+      setError(e.message || 'Error guardando');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const options = [
+    { key: 'direct_debit', icon: Banknote, label: 'Domiciliación bancaria', desc: 'Cargo automático en tu cuenta · SEPA' },
+    { key: 'card', icon: CreditCard, label: 'Tarjeta automática', desc: 'Cargo automático en tu tarjeta' },
+    { key: 'transfer', icon: Wallet, label: 'Transferencia bancaria', desc: 'Realizas la transferencia tú' },
+  ];
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={(e)=>e.stopPropagation()} style={{background:C.card,borderRadius:14,maxWidth:520,width:"100%",maxHeight:"90vh",overflow:"auto",padding:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h3 style={{fontSize:16,fontWeight:700}}>Método de pago</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted}}><X size={18}/></button>
+        </div>
+
+        <p style={{fontSize:12,color:C.textMuted,marginBottom:14}}>Elige cómo quieres pagar tus cuotas. Puedes cambiarlo cuando quieras.</p>
+
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+          {options.map(opt => {
+            const Icon = opt.icon;
+            const selected = method === opt.key;
+            return (
+              <button key={opt.key} onClick={()=>setMethod(opt.key)} style={{
+                display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderRadius:10,
+                border:`1.5px solid ${selected?C.primary:C.border}`,background:selected?`${C.primary}0A`:C.card,
+                cursor:"pointer",textAlign:"left",fontFamily:font,
+              }}>
+                <div style={{width:36,height:36,borderRadius:9,background:selected?C.primary:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Icon size={17} color={selected?"#fff":C.textMuted}/>
+                </div>
+                <div style={{flex:1}}>
+                  <p style={{fontSize:13.5,fontWeight:600}}>{opt.label}</p>
+                  <p style={{fontSize:11.5,color:C.textMuted,marginTop:2}}>{opt.desc}</p>
+                </div>
+                {selected && <div style={{width:18,height:18,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:700}}>✓</div>}
+              </button>
+            );
+          })}
+        </div>
+
+        {method === 'direct_debit' && (
+          <div style={{background:C.bg,borderRadius:10,padding:"16px 18px",marginBottom:16}}>
+            <p style={{fontSize:12,fontWeight:600,marginBottom:10,textTransform:"uppercase",letterSpacing:".03em",color:C.textMuted}}>Datos bancarios para domiciliación</p>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div>
+                <label style={{fontSize:11,color:C.textMuted,display:"block",marginBottom:4}}>IBAN</label>
+                <input
+                  value={iban} onChange={(e)=>setIban(e.target.value)}
+                  placeholder="ES00 0000 0000 0000 0000 0000"
+                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:13.5,fontFamily:"monospace",background:C.card}}
+                />
+              </div>
+              <div>
+                <label style={{fontSize:11,color:C.textMuted,display:"block",marginBottom:4}}>Titular de la cuenta</label>
+                <input
+                  value={holder} onChange={(e)=>setHolder(e.target.value)}
+                  placeholder="Nombre y apellidos del titular"
+                  style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1px solid ${C.border}`,fontSize:13.5,background:C.card,fontFamily:font}}
+                />
+              </div>
+              <label style={{display:"flex",gap:10,alignItems:"flex-start",fontSize:12,color:C.text,lineHeight:1.5,cursor:"pointer",marginTop:4}}>
+                <input type="checkbox" checked={mandateConsent} onChange={(e)=>setMandateConsent(e.target.checked)} style={{marginTop:3,flexShrink:0}}/>
+                <span>Autorizo al despacho a realizar cargos en mi cuenta mediante adeudo SEPA. Puedo solicitar la devolución en los 8 semanas siguientes al cargo según la normativa vigente.</span>
+              </label>
+            </div>
+          </div>
+        )}
+
+        {error && <div style={{background:`${C.red}15`,color:C.red,padding:"10px 14px",borderRadius:8,fontSize:12.5,marginBottom:12}}>{error}</div>}
+
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button onClick={onClose} disabled={saving} style={{padding:"10px 18px",borderRadius:9,background:C.bg,color:C.text,fontSize:13,fontWeight:500,border:`1px solid ${C.border}`,cursor:"pointer"}}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving} style={{padding:"10px 18px",borderRadius:9,background:`linear-gradient(135deg,${C.primary},${C.violet})`,color:"#fff",fontSize:13,fontWeight:600,border:"none",cursor:saving?"wait":"pointer"}}>
+            {saving ? "Guardando…" : "Guardar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ════ CHAT ════
