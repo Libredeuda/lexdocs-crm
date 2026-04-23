@@ -183,7 +183,9 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
     try {
       const { data: userData } = await supabase.auth.getUser();
       const ext = file.name.split('.').pop();
-      const path = `contacts/${contact.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      // Path con prefijo org_id: necesario para policies de Storage que
+      // restringen acceso por organización (evita fuga cross-tenant en Storage).
+      const path = `${contact.org_id}/contacts/${contact.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
       const { error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: false });
       if (upErr) throw upErr;
       const { error: insErr } = await supabase.from('documents').insert({
