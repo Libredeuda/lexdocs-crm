@@ -300,7 +300,7 @@ export default function AdminApp({ user, onLogout }) {
           {page === "settings" && settingsTab === "calendar" && <CalendarIntegration user={user} />}
           {page === "settings" && settingsTab === "apikeys" && <ApiKeys />}
           {page === "settings" && settingsTab === "pipeline-cfg" && <PipelineSettings />}
-          {page === "settings" && settingsTab === "billing" && <BillingSettings />}
+          {page === "settings" && settingsTab === "billing" && <BillingSettings user={user} />}
         </div>
       </main>
       <Carlota

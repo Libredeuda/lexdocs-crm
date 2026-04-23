@@ -13,11 +13,12 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Stripe price IDs will be created on first request if they don't exist
-const PLAN_PRICES: Record<string, { name: string; amount: number; interval: string }> = {
-  starter: { name: "LibreApp Starter", amount: 4900, interval: "month" },
-  pro: { name: "LibreApp Pro", amount: 8900, interval: "month" },
-  premium: { name: "LibreApp Premium", amount: 13900, interval: "month" },
+// Catálogo de planes LibreApp. Precios por licencia/mes en céntimos.
+// interval=month se usa en los dos casos; para el plan anual cobramos el precio
+// anual en un solo pago (interval=year, amount = precio_anual_mes * 12).
+const PLANS: Record<string, { name: string; monthly: number; yearly: number; maxLicenses: number }> = {
+  individual: { name: "LibreApp Individual", monthly: 12000, yearly: 9900, maxLicenses: 1 },
+  team: { name: "LibreApp Team", monthly: 7900, yearly: 5900, maxLicenses: 5 },
 };
 
 async function stripeRequest(endpoint: string, method: string, body?: any) {
@@ -32,33 +33,42 @@ async function stripeRequest(endpoint: string, method: string, body?: any) {
   return res.json();
 }
 
-async function getOrCreatePrice(planId: string): Promise<string> {
-  const plan = PLAN_PRICES[planId];
+// Devuelve un price ID para la combinación planId+cycle. Lo crea en Stripe si
+// no existe. Busca por metadata compuesta plan_cycle="individual_monthly" etc.
+async function getOrCreatePrice(planId: string, cycle: "monthly" | "yearly"): Promise<string> {
+  const plan = PLANS[planId];
   if (!plan) throw new Error(`Unknown plan: ${planId}`);
+  const key = `${planId}_${cycle}`;
+  const unit = cycle === "yearly" ? plan.yearly * 12 : plan.monthly; // anual = 12 meses en un solo cobro
 
-  // Search for existing product
-  const products = await stripeRequest(`/products/search?query=metadata["plan_id"]:"${planId}"`, "GET");
-
+  // Buscar producto existente por metadata
+  const products = await stripeRequest(`/products/search?query=metadata["plan_cycle"]:"${key}"`, "GET");
+  let productId: string;
   if (products.data?.length > 0) {
-    // Get price for this product
-    const prices = await stripeRequest(`/prices?product=${products.data[0].id}&active=true`, "GET");
-    if (prices.data?.length > 0) return prices.data[0].id;
+    productId = products.data[0].id;
+  } else {
+    const product = await stripeRequest("/products", "POST", {
+      name: `${plan.name} (${cycle === "yearly" ? "anual" : "mensual"})`,
+      "metadata[plan_id]": planId,
+      "metadata[plan_cycle]": key,
+    });
+    productId = product.id;
   }
 
-  // Create product
-  const product = await stripeRequest("/products", "POST", {
-    name: plan.name,
-    "metadata[plan_id]": planId,
-  });
+  // Buscar precio existente activo del producto
+  const prices = await stripeRequest(`/prices?product=${productId}&active=true`, "GET");
+  const matching = (prices.data || []).find((p: any) =>
+    p.unit_amount === unit && p.recurring?.interval === (cycle === "yearly" ? "year" : "month")
+  );
+  if (matching) return matching.id;
 
-  // Create price
+  // Crearlo si no existe
   const price = await stripeRequest("/prices", "POST", {
-    product: product.id,
-    unit_amount: plan.amount.toString(),
+    product: productId,
+    unit_amount: unit.toString(),
     currency: "eur",
-    "recurring[interval]": plan.interval,
+    "recurring[interval]": cycle === "yearly" ? "year" : "month",
   });
-
   return price.id;
 }
 
@@ -75,11 +85,16 @@ serve(async (req: Request) => {
     const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(jwt);
     if (authErr || !user) throw new Error("Invalid session");
 
-    const { planId, successUrl, cancelUrl } = await req.json();
+    const { planId, cycle = "monthly", licenses = 1, successUrl, cancelUrl } = await req.json();
 
-    if (!planId || !PLAN_PRICES[planId]) {
-      throw new Error("Invalid plan");
-    }
+    const plan = PLANS[planId];
+    if (!plan) throw new Error("Invalid plan");
+    if (cycle !== "monthly" && cycle !== "yearly") throw new Error("Invalid cycle");
+
+    // Validar nº de licencias
+    let qty = Number(licenses) || 1;
+    if (planId === "individual") qty = 1;
+    else qty = Math.max(2, Math.min(plan.maxLicenses, qty));
 
     // 2. Resolver tenant del CALLER (NO del body — el cliente no decide tenant)
     const { data: userRow, error: userErr } = await supabaseAdmin
@@ -100,19 +115,25 @@ serve(async (req: Request) => {
     const tenantSlug = tenant?.slug;
     const email = userRow.email || user.email || "";
 
-    const priceId = await getOrCreatePrice(planId);
+    const priceId = await getOrCreatePrice(planId, cycle);
 
-    // Create Checkout Session
+    // Crear Checkout Session. Cantidad = licencias (team puede ser 2-5).
     const session = await stripeRequest("/checkout/sessions", "POST", {
       mode: "subscription",
       "line_items[0][price]": priceId,
-      "line_items[0][quantity]": "1",
+      "line_items[0][quantity]": String(qty),
       success_url: successUrl || `${req.headers.get("origin") || "https://lexdocs-crm.vercel.app"}?checkout=success&plan=${planId}`,
       cancel_url: cancelUrl || `${req.headers.get("origin") || "https://lexdocs-crm.vercel.app"}?checkout=cancel`,
       customer_email: email,
       "metadata[tenant_id]": tenantId || "",
       "metadata[tenant_slug]": tenantSlug || "",
       "metadata[plan_id]": planId,
+      "metadata[cycle]": cycle,
+      "metadata[licenses]": String(qty),
+      "subscription_data[metadata][tenant_id]": tenantId || "",
+      "subscription_data[metadata][plan_id]": planId,
+      "subscription_data[metadata][cycle]": cycle,
+      "subscription_data[metadata][licenses]": String(qty),
       allow_promotion_codes: "true",
     });
 
