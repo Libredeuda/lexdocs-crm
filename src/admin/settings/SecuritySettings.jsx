@@ -104,7 +104,9 @@ export default function SecuritySettings() {
         <div style={card}>
           <span style={{ fontSize: 15, fontWeight: 600, color: C.dark, display: "block", marginBottom: 14 }}>1) Escanea este QR con tu app de autenticación</span>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
-            <img src={`data:image/svg+xml;utf8,${encodeURIComponent(enroll.qr)}`} alt="QR MFA" style={{ width: 168, height: 168, border: `1px solid ${C.border}`, borderRadius: 10, background: "#fff" }} />
+            {typeof enroll.qr === "string" && enroll.qr.trim().startsWith("<svg")
+              ? <div style={{ width: 168, height: 168, border: `1px solid ${C.border}`, borderRadius: 10, background: "#fff", padding: 6, display: "flex", alignItems: "center", justifyContent: "center" }} dangerouslySetInnerHTML={{ __html: enroll.qr }} />
+              : <img src={enroll.qr} alt="QR MFA" style={{ width: 168, height: 168, border: `1px solid ${C.border}`, borderRadius: 10, background: "#fff" }} />}
             <div style={{ fontSize: 12, color: C.textMuted }}>
               ¿No puedes escanear? Introduce esta clave a mano:
               <div style={{ marginTop: 6, padding: "8px 10px", background: C.bg, borderRadius: 8, fontFamily: "monospace", fontSize: 12, color: C.dark, wordBreak: "break-all", userSelect: "all" }}>{enroll.secret}</div>
