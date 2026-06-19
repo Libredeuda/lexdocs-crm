@@ -1,20 +1,47 @@
 import { useState } from "react";
-import { AlertCircle, LogOut } from "lucide-react";
+import { AlertCircle, CheckCircle } from "lucide-react";
 import { LOGO, font, C } from "../constants";
+import { supabase } from "../lib/supabase";
+
+// Las credenciales de prueba solo se muestran en modo demo (VITE_DEMO_MODE=true).
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 export default function Login({ onLogin, onShowOnboarding }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
   const [ld, setLd] = useState(false);
 
   async function go() {
     setLd(true);
     setErr("");
+    setInfo("");
     try {
       await onLogin(email, pass);
     } catch (e) {
       setErr(e.message || "Credenciales incorrectas");
+    } finally {
+      setLd(false);
+    }
+  }
+
+  async function sendReset() {
+    if (!email.trim()) {
+      setErr("Escribe tu email arriba y vuelve a pulsar “¿Olvidaste tu contraseña?”.");
+      return;
+    }
+    setLd(true);
+    setErr("");
+    setInfo("");
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: window.location.origin,
+      });
+      if (error) throw error;
+      setInfo(`Si ${email.trim()} tiene cuenta, te hemos enviado un enlace para restablecer la contraseña. Revisa tu correo (y spam).`);
+    } catch (e) {
+      setErr(e.message || "No se pudo enviar el email de recuperación.");
     } finally {
       setLd(false);
     }
@@ -40,24 +67,30 @@ export default function Login({ onLogin, onShowOnboarding }) {
         <div style={{ width: "100%", maxWidth: 380, background: C.white, borderRadius: 20, padding: "40px 32px", boxShadow: "0 20px 60px rgba(0,0,0,.3)", animation: "fadeIn .6s ease .2s both" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}><img src={LOGO} alt="" style={{ width: 28, height: 28, borderRadius: 6 }} /><span style={{ fontSize: 18, fontWeight: 700, color: C.dark }}>Acceder</span></div>
           <label style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4, color: C.textMuted }}>Email</label>
-          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="maria@demo.com" style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13.5, fontFamily: font, background: C.bg, marginBottom: 14 }} />
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="tucorreo@despacho.com" style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13.5, fontFamily: font, background: C.bg, marginBottom: 14 }} />
           <label style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4, color: C.textMuted }}>Contraseña</label>
           <input type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••" onKeyDown={e => e.key === "Enter" && go()} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13.5, fontFamily: font, background: C.bg, marginBottom: 18 }} />
           {err && <div style={{ padding: "9px 12px", borderRadius: 8, background: C.redSoft, color: C.red, fontSize: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 5 }}><AlertCircle size={13} />{err}</div>}
+          {info && <div style={{ padding: "9px 12px", borderRadius: 8, background: C.greenSoft, color: C.green, fontSize: 12, marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 5 }}><CheckCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{info}</div>}
           <button onClick={go} disabled={ld} style={{ width: "100%", padding: 12, borderRadius: 10, fontSize: 14, fontWeight: 600, background: `linear-gradient(135deg,${C.primary},${C.violet})`, color: "#fff", opacity: ld ? .7 : 1 }}>{ld ? "Accediendo..." : "Iniciar sesión"}</button>
+          <button onClick={sendReset} disabled={ld} style={{ width: "100%", padding: 8, marginTop: 8, borderRadius: 10, fontSize: 12, fontWeight: 500, background: "transparent", color: C.textMuted, cursor: "pointer", fontFamily: font }}>
+            ¿Olvidaste tu contraseña?
+          </button>
           {onShowOnboarding && (
             <button onClick={() => onShowOnboarding()} style={{ width: "100%", padding: 10, marginTop: 10, borderRadius: 10, fontSize: 12, fontWeight: 500, background: "transparent", color: C.primary, border: "none", cursor: "pointer", fontFamily: font, textDecoration: "underline", textUnderlineOffset: 3 }}>
               ¿No tienes cuenta? Crear despacho gratis
             </button>
           )}
-          <div style={{ marginTop: 20, padding: 12, borderRadius: 10, background: C.bg, border: `1px dashed ${C.border}`, fontSize: 11, color: C.textMuted, lineHeight: 1.7 }}>
-            <strong style={{ color: C.dark }}>Admin:</strong> carlos@libredeuda.com / admin1234<br />
-            <strong style={{ color: C.dark }}>Letrado:</strong> ana@libredeuda.com / admin1234<br />
-            <strong style={{ color: C.dark }}>Staff:</strong> laura@libredeuda.com / admin1234<br />
-            <span style={{ display: "block", borderTop: `1px dashed ${C.border}`, margin: "6px 0" }} />
-            <strong style={{ color: C.dark }}>Demo particular:</strong> maria@demo.com / 1234<br />
-            <strong style={{ color: C.dark }}>Demo empresa:</strong> empresa@demo.com / 1234
-          </div>
+          {DEMO_MODE && (
+            <div style={{ marginTop: 20, padding: 12, borderRadius: 10, background: C.bg, border: `1px dashed ${C.border}`, fontSize: 11, color: C.textMuted, lineHeight: 1.7 }}>
+              <strong style={{ color: C.dark }}>Admin:</strong> carlos@libredeuda.com / admin1234<br />
+              <strong style={{ color: C.dark }}>Letrado:</strong> ana@libredeuda.com / admin1234<br />
+              <strong style={{ color: C.dark }}>Staff:</strong> laura@libredeuda.com / admin1234<br />
+              <span style={{ display: "block", borderTop: `1px dashed ${C.border}`, margin: "6px 0" }} />
+              <strong style={{ color: C.dark }}>Demo particular:</strong> maria@demo.com / 1234<br />
+              <strong style={{ color: C.dark }}>Demo empresa:</strong> empresa@demo.com / 1234
+            </div>
+          )}
         </div>
       </div>
     </div>

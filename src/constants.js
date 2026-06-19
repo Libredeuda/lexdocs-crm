@@ -46,13 +46,6 @@ const DOCS_LSO=[{id:"ls01",name:"DNI / NIE en vigor (deudor y c\u00f3nyuge)",cat
 // ════ DOCUMENTOS CONCURSO ════
 const DOCS_CONCURSO=[{id:"ca01",name:"Escritura de constituci\u00f3n",cat:"Identificaci\u00f3n y Constituci\u00f3n",catNum:1,status:"pending",required:true},{id:"ca02",name:"Estatutos sociales vigentes",cat:"Identificaci\u00f3n y Constituci\u00f3n",catNum:1,status:"pending",required:true},{id:"ca03",name:"DNI del administrador",cat:"Identificaci\u00f3n y Constituci\u00f3n",catNum:1,status:"pending",required:true},{id:"ca04",name:"Certificaci\u00f3n Registro Mercantil",cat:"Identificaci\u00f3n y Constituci\u00f3n",catNum:1,status:"pending",required:true},{id:"ca05",name:"Poderes de representaci\u00f3n",cat:"Identificaci\u00f3n y Constituci\u00f3n",catNum:1,status:"pending",required:false},{id:"ca06",name:"Cuentas anuales 3 ejercicios",cat:"Doc. Contable y Fiscal",catNum:2,status:"pending",required:true},{id:"ca07",name:"Impuesto Sociedades 3 ejercicios",cat:"Doc. Contable y Fiscal",catNum:2,status:"pending",required:true},{id:"ca08",name:"Declaraciones IVA 12 meses",cat:"Doc. Contable y Fiscal",catNum:2,status:"pending",required:true},{id:"ca09",name:"Retenciones 12 meses",cat:"Doc. Contable y Fiscal",catNum:2,status:"pending",required:true},{id:"ca10",name:"Certificado AEAT",cat:"Doc. Contable y Fiscal",catNum:2,status:"pending",required:true},{id:"ca11",name:"Certificado TGSS",cat:"Doc. Contable y Fiscal",catNum:2,status:"pending",required:true},{id:"ca12",name:"Memoria explicativa insolvencia",cat:"Memoria Econ\u00f3mica y Jur\u00eddica",catNum:3,status:"pending",required:true,warn:"Requisito art. 7 TRLC"},{id:"ca13",name:"Destino cr\u00e9ditos tras insolvencia",cat:"Memoria Econ\u00f3mica y Jur\u00eddica",catNum:3,status:"pending",required:true},{id:"ca14",name:"Insolvencia actual o inminente",cat:"Memoria Econ\u00f3mica y Jur\u00eddica",catNum:3,status:"pending",required:true},{id:"ca15",name:"Bienes inmuebles con cargas",cat:"Inventario Bienes (Masa Activa)",catNum:4,status:"pending",required:true},{id:"ca16",name:"Tasaci\u00f3n inmuebles gravados",cat:"Inventario Bienes (Masa Activa)",catNum:4,status:"pending",required:true},{id:"ca17",name:"Veh\u00edculos y maquinaria",cat:"Inventario Bienes (Masa Activa)",catNum:4,status:"pending",required:true},{id:"ca18",name:"Extractos bancarios 12 meses",cat:"Inventario Bienes (Masa Activa)",catNum:4,status:"pending",required:true},{id:"ca19",name:"Existencias y stocks",cat:"Inventario Bienes (Masa Activa)",catNum:4,status:"pending",required:true},{id:"ca20",name:"Clientes pendientes cobro",cat:"Inventario Bienes (Masa Activa)",catNum:4,status:"pending",required:true},{id:"ca21",name:"Contratos arrendamiento",cat:"Inventario Bienes (Masa Activa)",catNum:4,status:"pending",required:true},{id:"ca22",name:"Participaciones otras sociedades",cat:"Inventario Bienes (Masa Activa)",catNum:4,status:"pending",required:false},{id:"ca23",name:"Lista acreedores (Word/Excel)",cat:"Lista Acreedores (Masa Pasiva)",catNum:5,status:"pending",required:true,warn:"Formato editable"},{id:"ca24",name:"Informe CIRBE (3 meses)",cat:"Lista Acreedores (Masa Pasiva)",catNum:5,status:"pending",required:true},{id:"ca25",name:"Contratos pr\u00e9stamo y p\u00f3lizas",cat:"Lista Acreedores (Masa Pasiva)",catNum:5,status:"pending",required:true},{id:"ca26",name:"Certificados saldo deuda",cat:"Lista Acreedores (Masa Pasiva)",catNum:5,status:"pending",required:true},{id:"ca27",name:"Reclamaciones y embargos",cat:"Lista Acreedores (Masa Pasiva)",catNum:5,status:"pending",required:true},{id:"ca28",name:"Trabajadores y salarios",cat:"Doc. Laboral",catNum:6,status:"pending",required:true},{id:"ca29",name:"N\u00f3minas trabajadores",cat:"Doc. Laboral",catNum:6,status:"pending",required:true},{id:"ca30",name:"Contratos de trabajo",cat:"Doc. Laboral",catNum:6,status:"pending",required:true},{id:"ca31",name:"Certificado SS",cat:"Doc. Laboral",catNum:6,status:"pending",required:true},{id:"ca32",name:"Salarios pendientes",cat:"Doc. Laboral",catNum:6,status:"pending",required:false},{id:"ca33",name:"Contratos mercantiles",cat:"Contratos y Rel. Jur\u00eddicas",catNum:7,status:"pending",required:true},{id:"ca34",name:"Contratos proveedores",cat:"Contratos y Rel. Jur\u00eddicas",catNum:7,status:"pending",required:true},{id:"ca35",name:"Contratos AAPP",cat:"Contratos y Rel. Jur\u00eddicas",catNum:7,status:"pending",required:false},{id:"ca36",name:"Transmisiones a vinculados",cat:"Transmisiones Patrimoniales",catNum:8,status:"pending",required:true,warn:"Obligatorio art. 7 TRLC"}];
 
-// ════ USUARIOS DEMO ════
-const DEMO=[
-  {email:"maria@demo.com",password:"1234",name:"Mar\u00eda Garc\u00eda L\u00f3pez",caseType:"lso",caseId:"1412a-2025",lawyer:"Carlos Mart\u00ednez",role:"client"},
-  {email:"empresa@demo.com",password:"1234",name:"Construcciones Levante S.L.",caseType:"concurso",caseId:"0892b-2025",lawyer:"Ana Beltr\u00e1n",role:"client"},
-  {email:"admin@libredeuda.com",password:"admin1234",name:"Carlos Mart\u00ednez",role:"admin",caseType:null,caseId:null,lawyer:null}
-];
-
 // ════ EVENTOS ════
 const EVENTS_LSO=[{id:"e1",title:"Llamada seguimiento",date:"2026-04-16",time:"10:00",type:"call",desc:"Revisi\u00f3n documentaci\u00f3n pendiente"},{id:"e2",title:"Plazo: Extractos bancarios",date:"2026-04-22",type:"deadline",desc:"12 meses de extractos"},{id:"e3",title:"Reuni\u00f3n en despacho",date:"2026-04-28",time:"12:00",type:"meeting",desc:"Revisi\u00f3n completa"},{id:"e4",title:"Plazo: Certificados AEAT/TGSS",date:"2026-05-05",type:"deadline",desc:"Certificados deuda"},{id:"e5",title:"Solicitud AEP",date:"2026-05-20",time:"09:30",type:"hearing",desc:"Notar\u00eda"}];
 const EVENTS_CONC=[{id:"e1",title:"Recogida documental",date:"2026-04-17",time:"11:00",type:"call",desc:"Doc. societaria"},{id:"e2",title:"Plazo: Contabilidad",date:"2026-04-25",type:"deadline",desc:"Cuentas y modelos"},{id:"e3",title:"Reuni\u00f3n administrador",date:"2026-04-30",time:"10:00",type:"meeting",desc:"Masa activa/pasiva"},{id:"e4",title:"Plazo: Acreedores + CIRBE",date:"2026-05-08",type:"deadline",desc:"Lista + CIRBE"},{id:"e5",title:"Solicitud concursal",date:"2026-05-22",time:"09:00",type:"hearing",desc:"Juzgado Mercantil"}];
@@ -106,34 +99,5 @@ const methodInfo = {
   transfer: { label:"Transferencia bancaria", icon:Wallet, desc:"Realizas la transferencia t\u00fa" },
 };
 
-// ════ FUNCION ADMIN: DATOS CROSS-CLIENT ════
-export function getAllCases() {
-  const clients = DEMO.filter(u => u.role === "client");
-  return clients.map(client => {
-    const docs = (client.caseType === "concurso" ? DOCS_CONCURSO : DOCS_LSO).map(d => ({...d}));
-    const events = client.caseType === "concurso" ? EVENTS_CONC : EVENTS_LSO;
-    const payments = PAYMENTS[client.caseType];
-    const uploaded = docs.filter(d => d.status === "uploaded" || d.status === "review").length;
-    const progress = docs.length ? Math.round(uploaded / docs.length * 100) : 0;
-    const pendingDocs = docs.filter(d => d.status === "pending" && d.required).length;
-    const docsInReview = docs.filter(d => d.status === "review").length;
-    const nextPayment = payments?.payments?.find(p => p.status === "upcoming") || null;
-    const totalDocs = docs.length;
-    return {
-      client: { name: client.name, email: client.email, caseType: client.caseType, caseId: client.caseId, lawyer: client.lawyer },
-      docs,
-      events,
-      payments,
-      progress,
-      phase: progress >= 100 ? "Revisi\u00f3n letrada" : "Recogida documental",
-      pendingDocs,
-      docsInReview,
-      totalDocs,
-      nextPayment,
-      lastActivity: new Date().toISOString().split("T")[0]
-    };
-  });
-}
-
 // ════ EXPORTS ════
-export { LOGO, font, C, KB, DOCS_LSO, DOCS_CONCURSO, DEMO, EVENTS_LSO, EVENTS_CONC, PAYMENTS, methodInfo };
+export { LOGO, font, C, KB, DOCS_LSO, DOCS_CONCURSO, EVENTS_LSO, EVENTS_CONC, PAYMENTS, methodInfo };
