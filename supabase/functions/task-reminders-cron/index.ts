@@ -8,6 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const CRON_SECRET = Deno.env.get("CRON_SECRET");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +45,17 @@ function fmtDate(dateStr: string): string {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Auth del cron: sólo quien tenga el secreto. Sin esto, cualquiera podría
+  // disparar el pipeline completo de notificaciones (inbox + email + WhatsApp + push).
+  const cronHeader = req.headers.get("x-cron-secret") || "";
+  if (!CRON_SECRET) {
+    console.error("CRON_SECRET no configurado: función rechazada.");
+    return new Response("Forbidden", { status: 403, headers: corsHeaders });
+  }
+  if (cronHeader !== CRON_SECRET) {
+    return new Response("Forbidden", { status: 403, headers: corsHeaders });
+  }
 
   try {
     // Calcular ahora y la ventana de búsqueda

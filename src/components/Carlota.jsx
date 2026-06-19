@@ -118,95 +118,50 @@ export default function Carlota({ user, currentModule = "general", currentContex
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    const hasEdgeFunction = !!import.meta.env.VITE_SUPABASE_URL;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
-    if (apiKey || hasEdgeFunction) {
-      // ═══ MODO REAL: Claude API ═══
+    if (supabaseUrl) {
+      // ═══ MODO REAL: Claude vía Edge Function carlota-chat ═══
+      // La API key de Anthropic vive SOLO en el servidor (Edge Function). Nunca
+      // se llama a api.anthropic.com desde el navegador para no exponer la clave.
       try {
-        const systemPrompt = buildSystemPrompt(firstName, role, currentModule, currentContext);
         const apiMessages = messages
           .filter(m => m.role === 'user' || m.role === 'assistant')
           .slice(-10)
           .concat([{ role: 'user', content: msg }])
           .map(m => ({ role: m.role, content: m.content }));
 
-        // Try Edge Function first, then direct API as fallback
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const { data: { session } } = await supabase.auth.getSession();
         const accessToken = session?.access_token;
         let reply;
 
-        if (supabaseUrl && accessToken) {
-          try {
-            const res = await fetch(`${supabaseUrl}/functions/v1/carlota-chat`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`,
-              },
-              body: JSON.stringify({
-                messages: apiMessages,
-                currentModule,
-                currentContext,
-              }),
-            });
-            const data = await res.json();
-            if (data.success) {
-              reply = data.reply;
-            } else {
-              throw new Error(data.error || 'Edge function error');
-            }
-          } catch (edgeError) {
-            console.warn('Edge function failed, trying direct API:', edgeError.message);
-            // Fallback to direct API if edge function not deployed yet
-            if (apiKey) {
-              const res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-api-key': apiKey,
-                  'anthropic-version': '2023-06-01',
-                  'anthropic-dangerous-direct-browser-access': 'true',
-                },
-                body: JSON.stringify({
-                  model: 'claude-sonnet-4-20250514',
-                  max_tokens: 1024,
-                  system: systemPrompt,
-                  messages: apiMessages,
-                }),
-              });
-              const data = await res.json();
-              reply = data.content?.map(b => b.text || '').join('');
-            }
-          }
-        }
-
-        if (!reply && apiKey) {
-          const res = await fetch('https://api.anthropic.com/v1/messages', {
+        if (accessToken) {
+          const res = await fetch(`${supabaseUrl}/functions/v1/carlota-chat`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-              'anthropic-dangerous-direct-browser-access': 'true',
+              'Authorization': `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
-              model: 'claude-sonnet-4-20250514',
-              max_tokens: 1024,
-              system: systemPrompt,
               messages: apiMessages,
+              currentModule,
+              currentContext,
             }),
           });
           const data = await res.json();
-          reply = data.content?.map(b => b.text || '').join('');
+          if (data.success) reply = data.reply;
+          else throw new Error(data.error || 'Edge function error');
         }
 
-        if (!reply) reply = 'Disculpa, no he podido procesar tu pregunta. ¿Puedes reformularla?';
-        setMessages(prev => [...prev, { role: 'assistant', content: reply + DISCLAIMER, timestamp: Date.now() }]);
+        if (reply) {
+          setMessages(prev => [...prev, { role: 'assistant', content: reply + DISCLAIMER, timestamp: Date.now() }]);
+        } else {
+          // Sin sesión o sin respuesta del servidor → modo demo
+          const demo = matchDemoResponse(msg, firstName);
+          setMessages(prev => [...prev, { role: 'assistant', content: demo, timestamp: Date.now() }]);
+        }
       } catch (e) {
-        console.error('Claude API error:', e);
-        // Fallback to demo
+        console.error('Carlota (edge function) error:', e);
         const reply = matchDemoResponse(msg, firstName);
         setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
       }
@@ -219,76 +174,6 @@ export default function Carlota({ user, currentModule = "general", currentContex
     }
 
     setIsTyping(false);
-  }
-
-  function buildSystemPrompt(name, userRole, module, context) {
-    const locationContext = context?.province || context?.city
-      ? `\n\nUBICACIÓN DEL CLIENTE: ${context.city ? context.city + ', ' : ''}${context.province || ''}. Cuando sea relevante, considera los juzgados mercantiles/primera instancia de esa provincia. Si no conoces criterios locales con certeza, remítelo al abogado.`
-      : '';
-
-    const base = `Eres Carlota, la asistente legal de LibreApp, una plataforma SaaS para despachos de abogados especializados en Ley de Segunda Oportunidad y Concurso de Acreedores en España.
-
-IDENTIDAD Y ÁMBITO:
-- Eres un asistente de información, NO un abogado. No sustituyes el asesoramiento profesional.
-- Tu ámbito es el DERECHO ESPAÑOL vigente (estatal y autonómico cuando aplique).
-- Solo te ciñes a: legislación española (BOE/DOUE), jurisprudencia CENDOJ (TS, TC, AP, TSJ) y TJUE vinculante.
-
-⚠ REGLA DE ORO — CERTEZA O DERIVA:
-- SOLO das información de la que estés 100% segura.
-- Si tienes la más mínima duda, NO inventas, NO elucubras, NO generalizas.
-- Si no estás 100% segura, respondes con esta estructura:
-  1. Reconoces la pregunta
-  2. Explicas brevemente por qué no puedes dar respuesta cerrada
-  3. Cierras SIEMPRE con: "**Consulta esto con tu abogado antes de tomar cualquier decisión.**"
-
-CITAS OBLIGATORIAS:
-- Cada afirmación legal con su fuente: artículo + ley + BOE, o sentencia STS sala/nº/fecha.
-- NUNCA inventas sentencias, números, ponentes, fechas ni artículos.
-- Si no recuerdas la referencia exacta: "existe jurisprudencia consolidada, tu abogado te dará referencias actualizadas".
-
-PROHIBICIONES:
-- Nunca asesoramiento jurídico concreto sobre el caso del cliente.
-- Nunca predices resultados ("vas a ganar", "te van a exonerar").
-- Nunca calculas plazos procesales exactos para un caso concreto.
-- Nunca interpretas documentos concretos del expediente.
-- Nunca tomas decisiones por el cliente.
-
-LEGISLACIÓN ESPAÑOLA VERIFICADA:
-- TRLC — RDLeg 1/2020 de 5 mayo (BOE 07/05/2020)
-- Ley 16/2022 de 5 septiembre (BOE 06/09/2022): reforma TRLC, transpone Directiva UE 2019/1023
-- Arts. 486-502 TRLC: BEPI
-- Art. 178 bis LC (derogado, solo aplicable a concursos anteriores a 26/09/2022)
-- RDL 1/2015 de 27 febrero
-
-JURISPRUDENCIA VERIFICADA (solo estas si es exacto):
-- STS 381/2019 de 2 julio (Sala 1ª): buena fe del deudor para BEPI
-- STS 56/2020 de 27 enero (Sala 1ª): BEPI y crédito público
-- STS 232/2022 de 22 marzo (Sala 1ª): plan de pagos en concurso consecutivo
-- STS 589/2023 de 19 abril (Sala 1ª): BEPI y deuda hipotecaria
-- STJUE C-869/19: plazos exoneración
-
-DOCUMENTACIÓN LSO (30 documentos en 7 categorías):
-1. Datos personales · 2. Situación laboral · 3. Situación bancaria
-4. Deudas · 5. Inventario bienes · 6. Gastos e ingresos · 7. Contratos
-
-DISCLAIMER OBLIGATORIO al final de cada respuesta legal:
-"ℹ️ Información orientativa basada en derecho español vigente. No sustituye el asesoramiento de tu abogado."` + locationContext;
-
-    const roleContext = {
-      client: `\n\nCONTEXTO: Hablas con ${name}, CLIENTE del despacho. Lenguaje sencillo, motivador. AUMENTA EL UMBRAL DE DUDA: si pregunta sobre SU CASO CONCRETO (ej: "¿podré exonerar mi hipoteca?", "¿pierdo mi coche?"), deriva SIEMPRE al abogado: "Esto depende de factores concretos de tu expediente. Consúltalo desde la pestaña 'Mi abogado'." Solo das info general, nunca aplicada al caso personal.`,
-      lawyer: `\n\nCONTEXTO: Hablas con ${name}, LETRADO. Técnica y eficiente. Terminología jurídica. Cita STS sala/nº/fecha + BOE. Si no sabes una referencia exacta, lo dices y no la inventas.`,
-      admin: `\n\nCONTEXTO: Hablas con ${name}, ADMIN del despacho. Ayuda con KPIs, pipeline, gestión. Mismos criterios de certeza.`,
-      staff: `\n\nCONTEXTO: Hablas con ${name}, STAFF. Ayuda con cuestiones documentales y procedimentales. Las preguntas técnico-legales las derivas al letrado del caso.`,
-    };
-
-    const moduleContext = {
-      lexdocs: '\n\nMÓDULO ACTIVO: LexDocs (portal documental del cliente). Enfócate en ayudar con documentación, qué falta, dónde conseguir cada documento, plazos.',
-      lexcrm: '\n\nMÓDULO ACTIVO: LexCRM (gestión del despacho). Puedes ayudar con gestión de contactos, expedientes, pipeline de ventas.',
-      lexconsulta: '\n\nMÓDULO ACTIVO: LexConsulta (búsqueda jurídica). Enfócate en jurisprudencia, legislación, análisis de sentencias.',
-      general: '',
-    };
-
-    return base + (roleContext[userRole] || roleContext.client) + (moduleContext[module] || '');
   }
 
   function handleKeyDown(e) {

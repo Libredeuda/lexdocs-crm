@@ -23,7 +23,26 @@ serve(async (req: Request) => {
     const { contact_id } = await req.json();
     if (!contact_id) throw new Error("contact_id is required");
 
-    const { data: contact, error } = await supabase.from("contacts").select("*").eq("id", contact_id).single();
+    // Authz: el llamador debe ser staff autenticado y el contacto debe pertenecer
+    // a SU org. Sin esto, al usar service_role cualquiera podría puntuar/leer el
+    // contacto de otro despacho pasando un contact_id ajeno (IDOR cross-tenant).
+    const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+    const { data: { user } } = jwt ? await supabase.auth.getUser(jwt) : { data: { user: null } };
+    if (!user) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: staff } = await supabase.from("users").select("org_id").eq("id", user.id).maybeSingle();
+    if (!staff?.org_id) {
+      return new Response(JSON.stringify({ success: false, error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const orgId = staff.org_id;
+    const { data: contact, error } = await supabase.from("contacts")
+      .select("*").eq("id", contact_id).eq("org_id", orgId).single();
     if (error || !contact) throw new Error("contact not found");
 
     // Activities
@@ -90,7 +109,7 @@ ${JSON.stringify(summary, null, 2)}`;
       ai_score_reasoning: parsed.reasoning || "",
       ai_next_action: parsed.next_action || "",
       ai_score_updated_at: new Date().toISOString(),
-    }).eq("id", contact_id);
+    }).eq("id", contact_id).eq("org_id", orgId);
 
     return new Response(JSON.stringify({
       success: true,

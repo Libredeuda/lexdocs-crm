@@ -110,13 +110,11 @@ serve(async (req: Request) => {
     }
     if (!authorized) {
       if (!INTERNAL_FUNCTION_SECRET) {
-        console.warn("⚠️ INTERNAL_FUNCTION_SECRET no configurado: llamadas internas sin auth siguen aceptándose. Configúralo en producción.");
-        authorized = true; // Backwards compat hasta configurar secret
-      } else {
-        return new Response(JSON.stringify({ error: "Forbidden" }), {
-          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        console.error("INTERNAL_FUNCTION_SECRET no configurado: llamada interna sin auth rechazada. Configúralo en los secrets del proyecto.");
       }
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (conv.status === "handoff" || conv.status === "closed") {

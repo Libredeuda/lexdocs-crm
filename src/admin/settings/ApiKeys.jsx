@@ -267,7 +267,7 @@ document.getElementById('lead-form').addEventListener('submit', async (e) => {
 
   alert('Gracias! Nos pondremos en contacto contigo.');
 });
-<\/script>`;
+</script>`;
 
 const ZAPIER_CURL = `curl -X POST '${BASE_URL}/rest/v1/contacts' \\
   -H 'apikey: ${ANON_PLACEHOLDER}' \\
