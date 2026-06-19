@@ -29,12 +29,18 @@ La app se abrirá automáticamente en **http://localhost:5173**
 
 ---
 
-## 🔑 Credenciales de prueba
+## 🔑 Acceso de prueba
 
-| Tipo | Email | Contraseña |
-|------|-------|-----------|
-| Particular (Ley 2ª Oportunidad) | `maria@demo.com` | `1234` |
-| Empresa (Concurso Acreedores) | `empresa@demo.com` | `1234` |
+El login de cuentas demo está **desactivado por defecto**. Para probar en local,
+arranca con el modo demo activado:
+
+```bash
+VITE_DEMO_MODE=true npm run dev
+```
+
+Con el flag activo, la pantalla de login muestra las credenciales de prueba. En
+producción el flag va sin definir, por lo que **no se envía ninguna credencial al
+bundle**.
 
 ---
 
@@ -59,11 +65,10 @@ El **verificador con IA** está en modo simulado para esta prueba:
 
 Esto te permite ver TODAS las pantallas del flujo (verificado, incompleto, incorrecto, caducado, en revisión) sin necesidad de API key.
 
-Para usar **verificación real con Claude Vision**, configura un backend (ver `backend-notificaciones/`) y crea un archivo `.env`:
-
-```
-VITE_VERIFY_API_URL=http://localhost:3001
-```
+Para usar **verificación real con Claude Vision**, el frontend llama a la Edge
+Function `verify-document` (Supabase), que guarda la `ANTHROPIC_API_KEY`
+server-side. No hace falta backend propio: basta con tener desplegada esa
+función y configurados los secrets del proyecto (ver `.env.example`).
 
 ---
 

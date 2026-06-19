@@ -2,10 +2,13 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://agzcaqgxlyrtbxtyxkwp.supabase.co',
-  process.env.SUPABASE_SERVICE_KEY
-);
+const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error('Faltan SUPABASE_URL y/o SUPABASE_SERVICE_KEY en el entorno. Aborta.');
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 // BOE keywords related to LSO/concursal
 const KEYWORDS = [
