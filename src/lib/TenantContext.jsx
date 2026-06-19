@@ -32,6 +32,22 @@ function resolveTenantSlug() {
   return 'libredeuda';
 }
 
+// Config por defecto del despacho (branding) por si el tenant no se puede leer
+// antes del login (RLS / función aún no desplegada). No bloquea el arranque: tras
+// autenticarse, el acceso a datos va por org_id vía RLS, no por esto.
+const DEFAULT_TENANT = {
+  slug: 'libredeuda',
+  name: 'LibreDeuda Abogados',
+  plan: 'pro',
+  is_active: true,
+  primary_color: '#5B6BF0',
+  secondary_color: '#7C5BF0',
+  modules_enabled: ['lexdocs', 'lexcrm', 'lexconsulta'],
+  carlota_enabled: true,
+  carlota_settings: {},
+  trial_ends_at: null,
+};
+
 export function TenantProvider({ children }) {
   const [tenant, setTenant] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -41,20 +57,18 @@ export function TenantProvider({ children }) {
     async function loadTenant() {
       try {
         const slug = resolveTenantSlug();
-        const { data, error: fetchError } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('slug', slug)
-          .eq('is_active', true)
-          .single();
-
-        if (fetchError || !data) {
-          setError(`Despacho "${slug}" no encontrado`);
-          setLoading(false);
-          return;
+        // Lookup vía RPC SECURITY DEFINER (devuelve solo campos de marca). Si falla
+        // (RLS pre-login o función aún no desplegada), caemos al default y seguimos.
+        let data = null;
+        try {
+          const { data: rows } = await supabase.rpc('get_tenant_by_slug', { p_slug: slug });
+          data = Array.isArray(rows) ? rows[0] : null;
+        } catch (rpcErr) {
+          console.warn('Tenant lookup falló, usando config por defecto:', rpcErr?.message);
         }
+        if (!data) data = { ...DEFAULT_TENANT, slug };
 
-        // Check trial expiry
+        // Check trial expiry (solo si el tenant real está en trial)
         if (data.trial_ends_at && new Date(data.trial_ends_at) < new Date() && data.plan === 'trial') {
           setError('El periodo de prueba ha expirado. Contacta con soporte para activar tu plan.');
           setLoading(false);
@@ -63,8 +77,8 @@ export function TenantProvider({ children }) {
 
         setTenant(data);
       } catch (e) {
-        setError('Error cargando la configuracion del despacho');
         console.error(e);
+        setTenant({ ...DEFAULT_TENANT });
       } finally {
         setLoading(false);
       }

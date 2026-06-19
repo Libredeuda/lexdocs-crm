@@ -326,8 +326,16 @@ CREATE INDEX idx_api_keys_key_hash ON api_keys (key_hash);
 -- ROW LEVEL SECURITY
 -- =============================================================================
 
--- Helper: reusable sub-select for the caller's org_id
--- (used inside every policy expression)
+-- Helper SECURITY DEFINER: el org_id del usuario actual. Bypassa RLS, lo que
+-- evita recursión infinita cuando una policy de `users` necesita consultar
+-- `users` (migration-010 lo redefine igual; CREATE OR REPLACE es idempotente).
+CREATE OR REPLACE FUNCTION auth_org_id()
+RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT org_id FROM public.users WHERE id = auth.uid()
+$$;
 
 -- ---- organizations --------------------------------------------------------
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
@@ -341,17 +349,19 @@ CREATE POLICY "Users can update own org" ON organizations
 -- ---- users ----------------------------------------------------------------
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
+-- Usa auth_org_id() (SECURITY DEFINER) en vez de una subconsulta a `users`:
+-- esa subconsulta dispararía esta misma policy → recursión infinita (42P17).
 CREATE POLICY "Users can view own org data" ON users
-  FOR SELECT USING (org_id = (SELECT org_id FROM users WHERE id = auth.uid()));
+  FOR SELECT USING (id = auth.uid() OR org_id = auth_org_id());
 
 CREATE POLICY "Users can insert own org data" ON users
-  FOR INSERT WITH CHECK (org_id = (SELECT org_id FROM users WHERE id = auth.uid()));
+  FOR INSERT WITH CHECK (org_id = auth_org_id());
 
 CREATE POLICY "Users can update own org data" ON users
-  FOR UPDATE USING (org_id = (SELECT org_id FROM users WHERE id = auth.uid()));
+  FOR UPDATE USING (org_id = auth_org_id());
 
 CREATE POLICY "Users can delete own org data" ON users
-  FOR DELETE USING (org_id = (SELECT org_id FROM users WHERE id = auth.uid()));
+  FOR DELETE USING (org_id = auth_org_id());
 
 -- ---- pipelines ------------------------------------------------------------
 ALTER TABLE pipelines ENABLE ROW LEVEL SECURITY;

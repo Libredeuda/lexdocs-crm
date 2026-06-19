@@ -134,8 +134,8 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
       .eq('contact_id', contact.id);
     setCases(c || []);
 
-    // Fetch team members for assignment dropdown
-    const { data: t } = await supabase.from('users').select('id, full_name, role');
+    // Fetch team members for assignment dropdown (solo de la propia org)
+    const { data: t } = await supabase.from('users').select('id, full_name, role').eq('org_id', contact.org_id);
     setTeam(t || []);
 
     // Fetch events (tareas/reuniones) linked to this contact
@@ -587,7 +587,7 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
                 padding: "12px 14px", background: C.bg, borderRadius: 10, marginBottom: 8,
               }}>
                 <p style={{ fontSize: 13, color: C.text, margin: 0, lineHeight: 1.5 }}>{n.content}</p>
-                <p style={{ fontSize: 10.5, color: C.textMuted, marginTop: 6, margin: 0, marginTop: 6 }}>
+                <p style={{ fontSize: 10.5, color: C.textMuted, margin: 0, marginTop: 6 }}>
                   {n.author?.full_name || 'Sistema'} - {new Date(n.created_at).toLocaleDateString("es-ES")}
                 </p>
               </div>
@@ -862,7 +862,7 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
                   <p style={{ fontSize: 12, fontWeight: 500, color: C.text, margin: 0 }}>
                     {c.case_type || 'Caso'} - {c.phase || ''}
                   </p>
-                  <p style={{ fontSize: 10.5, color: C.textMuted, marginTop: 2, margin: 0, marginTop: 2 }}>
+                  <p style={{ fontSize: 10.5, color: C.textMuted, margin: 0, marginTop: 2 }}>
                     {c.status || ''}{c.lawyer?.full_name ? ` - ${c.lawyer.full_name}` : ''}
                   </p>
                 </div>
@@ -968,7 +968,7 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
                   {/* Content */}
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 12.5, color: C.text, margin: 0, fontWeight: 500 }}>{a.description}</p>
-                    <p style={{ fontSize: 10.5, color: C.textMuted, marginTop: 3, margin: 0, marginTop: 3 }}>
+                    <p style={{ fontSize: 10.5, color: C.textMuted, margin: 0, marginTop: 3 }}>
                       {a.performed_by || 'Sistema'} - {formatDateTime(a.created_at)}
                     </p>
                   </div>

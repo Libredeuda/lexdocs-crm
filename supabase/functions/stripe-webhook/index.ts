@@ -17,6 +17,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET");
+// Escape hatch SOLO para desarrollo local. Si no está a "true" (producción por
+// defecto) y falta el secreto, el webhook se rechaza en lugar de aceptarse a ciegas.
+const ALLOW_INSECURE_WEBHOOKS = Deno.env.get("ALLOW_INSECURE_WEBHOOKS") === "true";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -24,8 +27,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // Algoritmo: HMAC-SHA256(secret, `${timestamp}.${payload}`). Hex lowercase.
 async function verifyStripeSignature(payload: string, sigHeader: string | null): Promise<boolean> {
   if (!STRIPE_WEBHOOK_SECRET) {
-    console.warn("⚠️ STRIPE_WEBHOOK_SECRET no configurado: firma NO verificada (solo dev). Configúralo en producción.");
-    return true;
+    if (ALLOW_INSECURE_WEBHOOKS) {
+      console.warn("⚠️ STRIPE_WEBHOOK_SECRET no configurado: firma NO verificada (ALLOW_INSECURE_WEBHOOKS=true, solo dev).");
+      return true;
+    }
+    console.error("STRIPE_WEBHOOK_SECRET no configurado: webhook rechazado.");
+    return false;
   }
   if (!sigHeader) return false;
   const parts = Object.fromEntries(sigHeader.split(",").map(p => p.split("=")));

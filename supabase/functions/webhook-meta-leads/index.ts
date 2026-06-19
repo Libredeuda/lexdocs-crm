@@ -19,11 +19,15 @@ const META_APP_SECRET = Deno.env.get("META_APP_SECRET"); // App Secret de Meta �
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // Verifica la firma HMAC-SHA256 que Meta envía en cabecera X-Hub-Signature-256.
-// Si META_APP_SECRET no está configurado: warning + skip (modo desarrollo).
+// Si falta META_APP_SECRET: se rechaza salvo ALLOW_INSECURE_WEBHOOKS=true (solo dev).
 async function verifyMetaSignature(rawBody: string, signatureHeader: string | null): Promise<boolean> {
   if (!META_APP_SECRET) {
-    console.warn("⚠️ META_APP_SECRET no configurado: firma NO verificada (solo dev). Configúralo en producción.");
-    return true;
+    if (Deno.env.get("ALLOW_INSECURE_WEBHOOKS") === "true") {
+      console.warn("⚠️ META_APP_SECRET no configurado: firma NO verificada (ALLOW_INSECURE_WEBHOOKS=true, solo dev).");
+      return true;
+    }
+    console.error("META_APP_SECRET no configurado: webhook rechazado.");
+    return false;
   }
   if (!signatureHeader) {
     console.error("Firma ausente en X-Hub-Signature-256");

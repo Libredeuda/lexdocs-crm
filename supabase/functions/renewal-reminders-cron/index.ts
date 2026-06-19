@@ -60,11 +60,12 @@ function buildReminderHtml(tenantName: string, adminName: string, days: number, 
 serve(async (req: Request) => {
   // Auth del cron: sólo quien tenga el secreto
   const cronHeader = req.headers.get("x-cron-secret") || "";
-  if (CRON_SECRET && cronHeader !== CRON_SECRET) {
+  if (!CRON_SECRET) {
+    console.error("CRON_SECRET no configurado: función rechazada.");
     return new Response("Forbidden", { status: 403 });
   }
-  if (!CRON_SECRET) {
-    console.warn("⚠️ CRON_SECRET no configurado: función abierta a cualquiera. Configúralo en producción.");
+  if (cronHeader !== CRON_SECRET) {
+    return new Response("Forbidden", { status: 403 });
   }
 
   try {

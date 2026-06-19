@@ -427,13 +427,16 @@ serve(async (req: Request) => {
     }
 
     // CRON MODE — requiere CRON_SECRET (configurado en pg_cron / cron externo)
-    if (CRON_SECRET && cronHeader !== CRON_SECRET) {
+    if (!CRON_SECRET) {
+      console.error("CRON_SECRET no configurado: cron mode rechazado.");
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!CRON_SECRET) {
-      console.warn("⚠️ CRON_SECRET no configurado: cron mode está abierto a cualquiera. Configúralo en producción.");
+    if (cronHeader !== CRON_SECRET) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { data: runs } = await supabase.from("automation_runs")
