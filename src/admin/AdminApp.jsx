@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard, Zap, Calendar } from "lucide-react";
+import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard, Zap, Calendar, ShieldCheck } from "lucide-react";
 import { LOGO, font, C } from "../constants";
 import { supabase } from '../lib/supabase';
 import Carlota from "../components/Carlota";
@@ -14,6 +14,7 @@ import ApiKeys from "./settings/ApiKeys";
 import PipelineSettings from "./settings/PipelineSettings";
 import BillingSettings from "./settings/BillingSettings";
 import CalendarIntegration from "./settings/CalendarIntegration";
+import SecuritySettings from "./settings/SecuritySettings";
 import Integrations from "./integrations/Integrations";
 import AgendaView from "./agenda/AgendaView";
 import AutomationsHub from "./automations/AutomationsHub";
@@ -99,6 +100,7 @@ export default function AdminApp({ user, onLogout }) {
     { id: "apikeys", label: "API Keys", icon: Code },
     { id: "pipeline-cfg", label: "Pipeline", icon: GitBranch },
     { id: "billing", label: "Facturacion", icon: CreditCard },
+    { id: "security", label: "Seguridad", icon: ShieldCheck },
   ];
 
   const pageTitle = {
@@ -301,6 +303,7 @@ export default function AdminApp({ user, onLogout }) {
           {page === "settings" && settingsTab === "apikeys" && <ApiKeys />}
           {page === "settings" && settingsTab === "pipeline-cfg" && <PipelineSettings />}
           {page === "settings" && settingsTab === "billing" && <BillingSettings user={user} />}
+          {page === "settings" && settingsTab === "security" && <SecuritySettings />}
         </div>
       </main>
       <Carlota
