@@ -9,3 +9,4 @@ server/.env
 
 # Supabase CLI temp (puede contener pooler-url con credenciales)
 supabase/.temp/
+.mcp.json
