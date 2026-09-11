@@ -83,6 +83,16 @@ Hallazgos nuevos:
 - ⏳ Sin hacer en esta sesión (sigue en la Fase 0 del roadmap): comprobar qué migraciones están aplicadas en producción y aplicar 015/016 si faltan.
 - ⏳ `npm audit` avisa de vulnerabilidades en dependencias de desarrollo (babel, vitest/mocker, brace-expansion, browserslist). No llegan al navegador; revisar con `npm audit fix` en una sesión aparte.
 
+### MFA por email (2026-09-11)
+
+Hecho en código, **pendiente de desplegar**: `migration-019-mfa-email.sql`, Edge Function `mfa-email`, `_shared/mfaEmail.ts` (añadido a `carlota-chat`, `ai-lead-scorer`, `pay-installment`, `stripe-checkout`, `ai-agent-respond` y `automation-runner`), pantalla de código en el login (`App.jsx`) y tarjeta en Configuración → Seguridad. Probado con 17 casos sobre PGlite (Postgres en WASM) que imita Supabase: sin código no se ve nada, con código solo lo del propio despacho, y el navegador no puede desactivarlo por su cuenta. **Orden de despliegue:** migración 019 → `mfa-email` + redeploy de `carlota-chat` y `ai-lead-scorer` → secreto `RESEND_API_KEY`. Si una función que importa `_shared/mfaEmail.ts` se despliega antes que la migración, falla cerrada y bloquea su uso.
+
+Descubierto en producción al preparar el despliegue:
+- Solo 3 de 17 Edge Functions están desplegadas (`carlota-chat`, `ai-lead-scorer`, `verify-document`).
+- Secretos configurados: solo `ANTHROPIC_API_KEY` (más los automáticos de Supabase). Falta Resend, Stripe, Meta, WhatsApp, VAPID, CRON, etc.
+- 🔴 `verify-document`, `send-notification`, `web-push-send`, `gcal-check-availability` y `gcal-sync-event` no comprueban quién las llama (ver `SECURITY.md` §6). `verify-document` está desplegada.
+- El formulario de alta muestra un plan "Premium 139 €/mes/letrado" que no coincide con el modelo comercial (49 € / 79 €).
+
 ## Decisiones ya tomadas (no reabrir sin motivo)
 
 - Serverless: Vercel + Supabase, sin servidores propios. Workers como scripts.

@@ -1,7 +1,68 @@
 import { useState, useEffect } from "react";
-import { ShieldCheck, ShieldAlert, Check, X, Loader } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Check, X, Loader, Mail } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from "../../lib/supabase";
+import { estadoMfaEmail, enviarCodigoEmail, verificarCodigoEmail } from "../../lib/mfaEmail";
+
+// Verificación en dos pasos por email (migration-019). Opt-in por usuario: para
+// activarla o desactivarla hay que confirmar un código enviado a su email.
+function EmailMfaCard({ card, btn, busy, setBusy, showToast }) {
+  const [enabled, setEnabled] = useState(null);   // null = cargando
+  const [pending, setPending] = useState(null);   // "enroll" | "disable" mientras se espera el código
+  const [code, setCode] = useState("");
+
+  useEffect(() => { estadoMfaEmail().then(st => setEnabled(st.enabled)); }, []);
+
+  async function start(purpose) {
+    setBusy(true);
+    const r = await enviarCodigoEmail(purpose);
+    setBusy(false);
+    if (!r.ok && !r.yaEnviado) { showToast(r.error); return; }
+    showToast(r.ok ? `Te hemos enviado un código a ${r.enviado_a}.` : r.error);
+    setPending(purpose); setCode("");
+  }
+
+  async function confirm() {
+    if (code.trim().length < 6) { showToast("Introduce el código de 6 dígitos del email."); return; }
+    setBusy(true);
+    const r = await verificarCodigoEmail(pending, code.trim());
+    setBusy(false);
+    if (!r.ok) { showToast(r.error); return; }
+    const activada = pending === "enroll";
+    setEnabled(activada); setPending(null); setCode("");
+    showToast(activada ? "✅ Verificación por email activada." : "Verificación por email desactivada.");
+  }
+
+  if (enabled === null) return null;
+
+  return (
+    <div style={{ ...card, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        {enabled ? <ShieldCheck size={22} color={C.green} /> : <Mail size={22} color={C.orange} />}
+        <span style={{ fontSize: 15, fontWeight: 600, color: C.dark }}>
+          Código por email {enabled ? "activado" : "desactivado"}
+        </span>
+      </div>
+      <p style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 16 }}>
+        {enabled
+          ? "Cada vez que inicies sesión te enviaremos un código de 6 dígitos a tu email."
+          : "Recomendado: al iniciar sesión, además de la contraseña, te pediremos un código que te llegará por email."}
+      </p>
+      {!pending && (enabled
+        ? <button onClick={() => start("disable")} disabled={busy} style={btn(C.redSoft, C.red)}>Desactivar</button>
+        : <button onClick={() => start("enroll")} disabled={busy} style={btn(`linear-gradient(135deg,${C.primary},${C.violet})`)}>Activar código por email</button>)}
+      {pending && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric" autoComplete="one-time-code"
+            onKeyDown={e => e.key === "Enter" && confirm()}
+            style={{ flex: 1, maxWidth: 160, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 16, letterSpacing: 4, fontFamily: font, background: C.bg }} />
+          <button onClick={confirm} disabled={busy} style={btn(C.green)}><Check size={15} style={{ verticalAlign: "-2px" }} /> Confirmar</button>
+          <button onClick={() => setPending(null)} disabled={busy} style={btn("transparent", C.textMuted)}><X size={15} style={{ verticalAlign: "-2px" }} /> Cancelar</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Verificación en dos pasos (MFA / TOTP). Opt-in: cada usuario la activa para su
 // propia cuenta. Compatible con Google Authenticator, Authy, 1Password, etc.
@@ -72,6 +133,10 @@ export default function SecuritySettings() {
       <p style={{ fontSize: 13, color: C.textMuted, margin: "0 0 20px" }}>Verificación en dos pasos (MFA) para proteger tu acceso.</p>
 
       {toast && <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 10, background: C.bg, border: `1px solid ${C.border}`, fontSize: 13, color: C.text }}>{toast}</div>}
+
+      <EmailMfaCard card={card} btn={btn} busy={busy} setBusy={setBusy} showToast={showToast} />
+
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: C.dark, margin: "8px 0 10px" }}>App de autenticación (opcional)</h3>
 
       {/* Estado activado */}
       {factor && !enroll && (

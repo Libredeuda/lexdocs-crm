@@ -9,6 +9,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { sesionConMfaEmailOk } from "../_shared/mfaEmail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -381,6 +382,7 @@ serve(async (req: Request) => {
       if (!jwt) throw new Error("Authentication required");
       const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
       if (authErr || !user) throw new Error("Invalid session");
+      if (!(await sesionConMfaEmailOk(jwt))) throw new Error("Email verification required");
       const { data: staff } = await supabase.from("users").select("org_id").eq("id", user.id).maybeSingle();
       if (!staff) throw new Error("User profile not found");
 

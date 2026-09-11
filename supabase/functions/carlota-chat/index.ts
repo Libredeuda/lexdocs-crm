@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { sesionConMfaEmailOk } from "../_shared/mfaEmail.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -121,6 +122,7 @@ serve(async (req: Request) => {
     if (!jwt) throw new Error("Authentication required");
     const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(jwt);
     if (authErr || !user) throw new Error("Invalid session");
+    if (!(await sesionConMfaEmailOk(jwt))) throw new Error("Email verification required");
 
     // Resolver rol real y nombre desde DB
     let realRole = "client";

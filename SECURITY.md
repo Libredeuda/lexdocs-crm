@@ -41,7 +41,7 @@ pública). Todo secreto vive server-side (Edge Functions / Supabase secrets).
    ├─ Storage (bucket privado, signed URLs)
    └─ Edge Functions (Deno)              ← única superficie con service_role
         ├─ públicas: webhooks (Stripe/Meta/WhatsApp) — firma HMAC
-        └─ con sesión: carlota-chat, ai-lead-scorer, verify-document, ...
+        └─ con sesión: carlota-chat, ai-lead-scorer, verify-document, mfa-email, ...
 [ pg_cron ] --X-Cron-Secret--> crons (recordatorios, renovaciones, automations)
 [ Workers ] --service_role--> tablas legislation/jurisprudence (manual/cron)
 ```
@@ -102,7 +102,16 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
   fallback en `App.jsx`, además publicado en `README.md`. Aunque un login DEMO no
   obtiene sesión Supabase (RLS bloquea los datos), expone credenciales en el bundle
   y es mala praxis. → eliminar de prod (gate por flag de dev o build separado).
-- ❌ **MFA/2FA** para staff (admin/lawyer): Supabase soporta TOTP → activar y forzar.
+- ⚠️ **MFA/2FA** (opt-in por usuario, sin forzar todavía):
+  - TOTP (app de autenticación) vía Supabase Auth → sesión `aal2`.
+  - **Código por email** (`migration-019` + Edge Function `mfa-email`): el código (hash, 10 min,
+    5 intentos, 1 envío/min y 5/15 min) se liga al `session_id` del JWT. Una política
+    **RESTRICTIVA** `mfa_email_gate` en todas las tablas de `public` y en `storage.objects`
+    exige `mfa_email_ok()`, así que una sesión con contraseña pero sin código no lee ni escribe
+    nada aunque hable directamente con PostgREST. Las Edge Functions con `service_role` que
+    actúan por un usuario lo comprueban con `_shared/mfaEmail.ts`. **Toda tabla nueva debe
+    añadir su `mfa_email_gate`.** Necesita `RESEND_API_KEY`.
+  - Pendiente: hacerlo obligatorio para staff (admin/lawyer).
 - ❌ **Rate limiting / lockout de login** (anti fuerza bruta). Pendiente.
 - ❌ **Timeout de sesión** e indicios de sesión concurrente. Pendiente.
 
@@ -111,7 +120,10 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
 ## 6. Superficie pública / Edge Functions
 
 - ✅ Webhooks validan **firma HMAC** (Stripe `Stripe-Signature`, Meta `X-Hub-Signature-256`).
-- ✅ Funciones con sesión validan JWT + `org_id`.
+- ⚠️ Funciones con sesión validan JWT + `org_id`… **salvo `verify-document`, `send-notification`,
+  `web-push-send`, `gcal-check-availability` y `gcal-sync-event`, que no validan al llamador**
+  (el gateway acepta la anon key como JWT). `verify-document` está desplegada y llama a
+  Anthropic → riesgo de coste. Detectado el 2026-09-11. → P0.
 - ❌ **Rate limiting** en funciones de IA y webhooks → riesgo de **amplificación de
   coste** (Anthropic/Resend) y spam de contactos. Pendiente (límite por org/IP).
 - ⚠️ **CORS `*`** en todas las funciones. Con JWT+org el riesgo baja, pero conviene
@@ -180,7 +192,8 @@ Datos personales sensibles (clientes, deudas, expedientes). Antes de vender lice
 - [ ] Aplicar migraciones 015 + 016 en prod.
 - [ ] Configurar **todos** los secrets de Edge Functions en el proyecto Supabase.
 - [ ] Programar los **crons** (recordatorios, renovaciones, dunning) — hoy no corren.
-- [ ] **MFA** obligatorio para staff + rate limiting/lockout de login.
+- [ ] **MFA** obligatorio para staff + rate limiting/lockout de login. *(MFA por email y TOTP ya disponibles opt-in)*
+- [ ] Autenticar al llamador en `verify-document`, `send-notification`, `web-push-send`, `gcal-check-availability`, `gcal-sync-event`.
 - [ ] Derechos RGPD (export/borrado) + política de retención + DPA.
 
 ### 🟠 P1 — antes de escalar

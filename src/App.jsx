@@ -1,7 +1,8 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import Login from "./components/Login";
 import { supabase } from "./lib/supabase";
 import { useTenant } from "./lib/TenantContext";
+import { estadoMfaEmail, enviarCodigoEmail, verificarCodigoEmail } from "./lib/mfaEmail";
 
 // Modo demo de producto: OFF salvo build/entorno con VITE_DEMO_MODE=true.
 // En producción esta constante es false → la rama de demo (y su módulo de
@@ -90,12 +91,60 @@ function MfaChallenge({ factorId, onVerified, onCancel }) {
   );
 }
 
+// Reto MFA por email: envía un código al correo del usuario y lo verifica.
+function EmailMfaChallenge({ onVerified, onCancel }) {
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  const [info, setInfo] = useState("Enviando el código a tu email...");
+  const [ld, setLd] = useState(false);
+  const enviado = useRef(false);
+
+  async function enviar() {
+    setErr("");
+    const r = await enviarCodigoEmail("login");
+    if (r.ok) setInfo(`Te hemos enviado un código de 6 dígitos a ${r.enviado_a}. Caduca en 10 minutos.`);
+    else if (r.yaEnviado) setInfo("Ya te hemos enviado un código hace un momento. Revisa tu correo (y la carpeta de spam).");
+    else { setInfo(""); setErr(r.error); }
+  }
+
+  // Envía el código al entrar (una sola vez, también en StrictMode)
+  useEffect(() => {
+    if (enviado.current) return;
+    enviado.current = true;
+    enviar();
+  }, []);
+
+  async function verify() {
+    if (code.trim().length < 6) { setErr("Introduce el código de 6 dígitos."); return; }
+    setLd(true); setErr("");
+    const r = await verificarCodigoEmail("login", code.trim());
+    setLd(false);
+    if (!r.ok) { setErr(r.error); return; }
+    onVerified();
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1E1E2E', fontFamily: "'Poppins', sans-serif", padding: 20 }}>
+      <div style={{ width: '100%', maxWidth: 380, background: '#fff', borderRadius: 20, padding: '36px 32px', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1E1E2E', margin: '0 0 6px' }}>Verificación por email</h2>
+        <p style={{ fontSize: 13, color: '#7A7A8A', margin: '0 0 20px', lineHeight: 1.5 }}>{info || "Introduce el código que te hemos enviado por email."}</p>
+        <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" inputMode="numeric" autoComplete="one-time-code" onKeyDown={e => e.key === 'Enter' && verify()} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 18, letterSpacing: 6, textAlign: 'center', marginBottom: 14, fontFamily: "'Poppins', sans-serif" }} />
+        {err && <div style={{ padding: '9px 12px', borderRadius: 8, background: '#FEECEC', color: '#E5484D', fontSize: 12, marginBottom: 14 }}>{err}</div>}
+        <button onClick={verify} disabled={ld} style={{ width: '100%', padding: 12, borderRadius: 10, fontSize: 14, fontWeight: 600, background: 'linear-gradient(135deg,#5B6BF0,#7C5BF0)', color: '#fff', border: 'none', cursor: 'pointer', opacity: ld ? .7 : 1, fontFamily: "'Poppins', sans-serif" }}>{ld ? 'Verificando...' : 'Verificar'}</button>
+        <button onClick={enviar} disabled={ld} style={{ width: '100%', padding: 10, marginTop: 8, borderRadius: 10, fontSize: 12, fontWeight: 500, background: 'transparent', color: '#5B6BF0', border: 'none', cursor: 'pointer', fontFamily: "'Poppins', sans-serif" }}>Reenviar código</button>
+        <button onClick={onCancel} disabled={ld} style={{ width: '100%', padding: 10, borderRadius: 10, fontSize: 12, fontWeight: 500, background: 'transparent', color: '#7A7A8A', border: 'none', cursor: 'pointer', fontFamily: "'Poppins', sans-serif" }}>Cancelar y salir</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const tenant = useTenant();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [recovery, setRecovery] = useState(false);
   const [mfaPending, setMfaPending] = useState(null);
+  const [emailMfaPending, setEmailMfaPending] = useState(false);
   const [appError, setAppError] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -112,8 +161,7 @@ export default function App() {
           if (factorId) {
             setMfaPending({ factorId });
           } else {
-            const profile = await fetchProfile(session.user.id);
-            if (profile) setUser(profile);
+            await completarAcceso(session.user.id);
           }
         }
       } catch (e) {
@@ -123,6 +171,8 @@ export default function App() {
       }
     }
     init();
+    // Solo al montar: completarAcceso usa setters estables
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Al volver del email de recuperación, Supabase emite PASSWORD_RECOVERY →
@@ -152,6 +202,22 @@ export default function App() {
     }
   }
 
+  // Tras contraseña (y TOTP si lo hay): pide el código por email si hace falta
+  // y, si no, carga el perfil. Devuelve true si el acceso sigue adelante.
+  async function completarAcceso(userId) {
+    const mfa = await estadoMfaEmail();
+    if (mfa.enabled && !mfa.verified) {
+      setEmailMfaPending(true);
+      return true;
+    }
+    const profile = await fetchProfile(userId);
+    if (profile) {
+      setUser(profile);
+      return true;
+    }
+    return false;
+  }
+
   async function handleLogin(email, password) {
     // Try Supabase auth first
     try {
@@ -163,11 +229,7 @@ export default function App() {
         setMfaPending({ factorId });
         return;
       }
-      const profile = await fetchProfile(data.user.id);
-      if (profile) {
-        setUser(profile);
-        return;
-      }
+      if (await completarAcceso(data.user.id)) return;
     } catch (e) {
       console.log('Supabase auth failed:', e.message);
     }
@@ -199,10 +261,7 @@ export default function App() {
     return <SetNewPassword onDone={async () => {
       setRecovery(false);
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const profile = await fetchProfile(session.user.id);
-        if (profile) setUser(profile);
-      }
+      if (session?.user) await completarAcceso(session.user.id);
     }} />;
   }
 
@@ -212,12 +271,23 @@ export default function App() {
       onVerified={async () => {
         const { data: { session } } = await supabase.auth.getSession();
         setMfaPending(null);
+        if (session?.user) await completarAcceso(session.user.id);
+      }}
+      onCancel={async () => { await supabase.auth.signOut(); setMfaPending(null); setUser(null); }}
+    />;
+  }
+
+  if (emailMfaPending) {
+    return <EmailMfaChallenge
+      onVerified={async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        setEmailMfaPending(false);
         if (session?.user) {
           const profile = await fetchProfile(session.user.id);
           if (profile) setUser(profile);
         }
       }}
-      onCancel={async () => { await supabase.auth.signOut(); setMfaPending(null); setUser(null); }}
+      onCancel={async () => { await supabase.auth.signOut(); setEmailMfaPending(false); setUser(null); }}
     />;
   }
 
