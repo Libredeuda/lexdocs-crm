@@ -109,4 +109,4 @@ Descubierto en producción al preparar el despliegue:
 3. ¿Hay ya despachos reales (aparte de LibreDeuda) con datos en `lexdocs-prod`? Condiciona cuánto cuidado hace falta con las migraciones.
 4. ¿Se mantiene `libertadhipotecaria/` dentro de este repositorio o se mueve al suyo?
 5. ¿Qué es el proyecto Supabase `agzcaqgxlyrtbxtyxkwp` que aparece en `ApiKeys.jsx` e `Integrations.jsx`?
-6. ¿Existen en producción las cuentas `carlos@`/`ana@`/`laura@libredeuda.com` con la contraseña `admin1234`?
+6. ~~¿Existen en producción las cuentas `carlos@`/`ana@`/`laura@libredeuda.com` con `admin1234`?~~ **No** (verificado el 2026-09-11: `lexdocs-prod` tiene un único usuario, `libredeudaabogados@gmail.com`, admin de `libredeuda`, sin MFA).
