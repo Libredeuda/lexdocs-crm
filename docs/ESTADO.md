@@ -84,6 +84,13 @@ Hallazgos nuevos:
 - ⏳ Sin hacer en esta sesión (sigue en la Fase 0 del roadmap): comprobar qué migraciones están aplicadas en producción y aplicar 015/016 si faltan.
 - ⏳ `npm audit` avisa de vulnerabilidades en dependencias de desarrollo (babel, vitest/mocker, brace-expansion, browserslist). No llegan al navegador; revisar con `npm audit fix` en una sesión aparte.
 
+### Estado real de producción (2026-09-11)
+
+- 🔴 **La web publicada (lexdocs-crm.vercel.app) está rota**: su bundle apunta a `agzcaqgxlyrtbxtyxkwp.supabase.co`, que ya no existe (no resuelve DNS). Hay que cambiar `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en Vercel para que apunten a `lexdocs-prod` y republicar.
+- 🔴 **`lexdocs-prod` está casi vacío**: 1 tenant, 1 organización, 1 usuario; 0 `document_types`, 0 `pipelines`, 0 contactos y expedientes, 0 `legislation`/`jurisprudence`. `seed.sql` nunca se aplicó. Ojo: `seed.sql` también crea usuarios de Auth con contraseña `admin1234`; hay que aplicar solo la parte de datos.
+- `app.libredeudaabogados.com` no resuelve.
+- Mapa visual completo (árbol, arquitectura, arreglos y fases): https://claude.ai/code/artifact/ac79aca3-6d89-4ee0-bb78-abb8ec531290
+
 ### MFA por email (2026-09-11)
 
 **Desplegado el 2026-09-11**: migración 019 aplicada en `lexdocs-prod` (37 tablas con `mfa_email_gate`); `mfa-email`, `carlota-chat` y `ai-lead-scorer` desplegadas. Falta el secreto `RESEND_API_KEY` y publicar el frontend en Vercel. Hecho en código: `migration-019-mfa-email.sql`, Edge Function `mfa-email`, `_shared/mfaEmail.ts` (añadido a `carlota-chat`, `ai-lead-scorer`, `pay-installment`, `stripe-checkout`, `ai-agent-respond` y `automation-runner`), pantalla de código en el login (`App.jsx`) y tarjeta en Configuración → Seguridad. Probado con 17 casos sobre PGlite (Postgres en WASM) que imita Supabase: sin código no se ve nada, con código solo lo del propio despacho, y el navegador no puede desactivarlo por su cuenta. **Orden de despliegue:** migración 019 → `mfa-email` + redeploy de `carlota-chat` y `ai-lead-scorer` → secreto `RESEND_API_KEY`. Si una función que importa `_shared/mfaEmail.ts` se despliega antes que la migración, falla cerrada y bloquea su uso.
