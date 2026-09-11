@@ -4,7 +4,7 @@ Documento de referencia de la postura de seguridad. Define **servidores, protecc
 y aislamiento** del SaaS legal multi-tenant. Es la base del compromiso de seguridad
 frente a los despachos que compran licencias (nivel DPA).
 
-Estado: `✅ hecho` · `⚠️ parcial` · `❌ pendiente`. Última revisión: 2026-06-16.
+Estado: `✅ hecho` · `⚠️ parcial` · `❌ pendiente`. Última revisión: 2026-09-11.
 
 ---
 
@@ -62,10 +62,9 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
 - ✅ **Edge Functions con service_role validan `org_id`** del llamador
   (stripe-webhook, pay-installment, ai-agent-respond, **ai-lead-scorer** ya
   corregida — antes era un IDOR cross-tenant).
-- ⚠️ **Migraciones 015 + 016 sin aplicar**: 015 cierra el límite de licencias en
-  `UPDATE`; 016 hace `search_history` privado por usuario. → aplicar en prod.
-- ❌ **Verificación automatizada de RLS** (test que falle si una tabla nueva queda
-  sin policy). Pendiente.
+- ✅ **Migraciones 015 + 016 aplicadas** en prod (verificado el 2026-09-11).
+- ✅ **Verificación automatizada de RLS**: `src/schema.test.js` en `npm test` (RLS al final de las
+  migraciones, `mfa_email_gate` en tablas nuevas, `_bootstrap.sql` al día).
 
 ---
 
@@ -88,20 +87,23 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
   que **nunca** debe estar a `true` en prod).
 - ❌ **Política de rotación documentada** (objetivo: rotar service_role y claves de
   API cada 90 días; runbook de rotación de emergencia ante fuga). Pendiente.
-- ⚠️ Fallbacks de URL de proyecto hardcodeados en `ApiKeys.jsx`/`Integrations.jsx`:
-  bajo riesgo (la URL es semipública) pero conviene exigir la env var.
+- ✅ Sin URLs de proyecto fijas en el código: `ApiKeys.jsx`/`Integrations.jsx` usan `VITE_SUPABASE_URL`
+  (antes apuntaban a un proyecto ajeno, `agzcaq…`, ya inexistente; corregido el 2026-09-11).
+- ✅ Vercel: solo `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (tipo *config*, pública a propósito) y
+  `VITE_GOOGLE_CLIENT_ID`. `.vercelignore` impide subir `.env*` en los despliegues desde la CLI.
 
 ---
 
 ## 5. Autenticación y control de acceso
 
 - ✅ Supabase Auth (JWT) como fuente de identidad; RLS deriva permisos del JWT.
-- ✅ **API keys de tenant hasheadas** (`key_hash` + `key_prefix`, nunca raw) con
-  permisos y revocación (`is_active`). — *falta expiración y auditoría de uso.*
-- 🔴 **Login DEMO con password `1234`** hardcodeado en `src/constants.js` y como
-  fallback en `App.jsx`, además publicado en `README.md`. Aunque un login DEMO no
-  obtiene sesión Supabase (RLS bloquea los datos), expone credenciales en el bundle
-  y es mala praxis. → eliminar de prod (gate por flag de dev o build separado).
+- ⚠️ **API keys de tenant hasheadas** (`key_hash` + `key_prefix`, nunca raw) con
+  permisos y revocación (`is_active`), pero **ninguna función las valida todavía**: la API REST no
+  está activa (la pantalla lo avisa). *Falta el punto de entrada, expiración y auditoría de uso.*
+- ✅ **Cuentas DEMO** (`src/demoUsers.js`) solo con `VITE_DEMO_MODE=true`; el build de producción no
+  contiene `admin1234` ni `maria@demo.com` (verificado en el bundle publicado el 2026-09-11).
+  `seed.sql` sigue creando usuarios con `admin1234`: **no ejecutarlo en producción** (usar
+  `_seed_despacho.sql`). Producción solo tiene la cuenta del administrador.
 - ⚠️ **MFA/2FA** (opt-in por usuario, sin forzar todavía):
   - TOTP (app de autenticación) vía Supabase Auth → sesión `aal2`.
   - **Código por email** (`migration-019` + Edge Function `mfa-email`): el código (hash, 10 min,
@@ -191,9 +193,9 @@ Datos personales sensibles (clientes, deudas, expedientes). Antes de vender lice
 
 ### 🔴 P0 — antes del primer cliente de pago
 - [ ] **Revocar + rotar** la clave Anthropic comprometida (manual, Anthropic console).
-- [ ] Eliminar credenciales DEMO (`1234`) del código/bundle y del README.
+- [x] Eliminar credenciales DEMO del bundle de producción (detrás de `VITE_DEMO_MODE`).
 - [x] Cerrar IDOR cross-tenant en `ai-lead-scorer` (auth + `org_id`).
-- [ ] Aplicar migraciones 015 + 016 en prod.
+- [x] Aplicar migraciones 015 + 016 en prod (verificado 2026-09-11; 001–019 aplicadas).
 - [ ] Configurar **todos** los secrets de Edge Functions en el proyecto Supabase.
 - [ ] Programar los **crons** (recordatorios, renovaciones, dunning) — hoy no corren.
 - [ ] **MFA** obligatorio para staff + rate limiting/lockout de login. *(MFA por email y TOTP ya disponibles opt-in)*

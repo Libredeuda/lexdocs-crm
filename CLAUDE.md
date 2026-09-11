@@ -44,10 +44,12 @@ src/
   admin/AdminApp.jsx      Shell del panel del despacho; pestañas en admin/{contacts,cases,agenda,automations,settings,integrations,lexconsulta}
   demoUsers.js            Cuentas demo — SOLO se incluyen en el bundle con VITE_DEMO_MODE=true
 supabase/
-  _bootstrap.sql          Esquema completo desplegable de cero (generado con _generate_bootstrap.py)
-  migration-001..018      Historial de migraciones (001 tenants … 018 fix RLS users)
-  seed.sql                Tipos de documento LSO/concurso, etapas de pipeline, datos del tenant libredeuda
-  functions/              17 Edge Functions (ver tabla en SECURITY.md §2)
+  schema.sql              Esquema base (la "migración 000"); _generate_bootstrap.py lo concatena con las migraciones
+  _bootstrap.sql          Esquema completo desplegable de cero. EMPIEZA CON drop schema public cascade: nunca en prod con datos
+  migration-001..020      Historial de migraciones (… 019 MFA por email, 020 límites de IA + function_errors)
+  _seed_despacho.sql      Datos iniciales de un despacho existente (embudo + 66 tipos de documento). Re-ejecutable
+  seed.sql                Despacho DEMO completo con usuarios admin1234: solo local, NUNCA en producción
+  functions/              18 Edge Functions + _shared/ (mfaEmail, limites, errores, llamador)
 server/src/workers/       boe-sync.js, cendoj-sync.js, run-sync.js
 libertadhipotecaria/      Microsite estático independiente (otro negocio); no tocar salvo petición expresa
 ```
@@ -63,8 +65,10 @@ npm test                         # Vitest
 npm run build                    # dist/ para Vercel
 
 cd server && npm install && npm run sync:all   # workers BOE + CENDOJ (necesita service_role en server/.env)
-supabase functions deploy <nombre> --project-ref fmwmjxntbifqquyaddkx
+supabase functions deploy <nombre> --use-api --project-ref fmwmjxntbifqquyaddkx
 supabase secrets set KEY=VALUE --project-ref fmwmjxntbifqquyaddkx
+supabase db query --linked -f archivo.sql       # SQL contra producción (proyecto ya enlazado)
+npx vercel deploy --prod                        # publicar la web: Vercel NO está conectado a GitHub
 ```
 
 Variables: copia `.env.example` a `.env`. Solo las `VITE_*` llegan al navegador. Todo lo demás son secretos de Edge Functions.
@@ -93,6 +97,7 @@ Variables: copia `.env.example` a `.env`. Solo las `VITE_*` llegan al navegador.
 
 - ~~`node_modules/` y `dist/` trackeados en git; `vitest` UNMET~~ → resuelto el 2026-09-11 (Fase 0).
 - Proyecto Supabase ajeno `agzcaqgxlyrtbxtyxkwp` fijo en `ApiKeys.jsx` / `Integrations.jsx` — sustituir por `VITE_SUPABASE_URL` (ver `docs/ESTADO.md`).
-- Migraciones 015 y 016 estaban sin aplicar en producción en la última revisión (2026-06-16). Verificar antes de seguir.
+- Migración 020 escrita pero sin aplicar (2026-09-11): aplicarla ANTES de desplegar `carlota-chat`/`verify-document` nuevas.
+- Toda tabla nueva necesita RLS y su política `mfa_email_gate` en la misma migración (lo comprueba `npm test`).
 - Proyecto Supabase `lexdocs-prod` en plan gratuito: se pausa tras 7 días sin actividad. Reactivar desde el panel de Supabase antes de probar contra producción.
-- Sin rate limiting en funciones de IA ni en webhooks; sin audit log de seguridad; sin runbook RGPD. Detalle completo en `SECURITY.md`.
+- Sin rate limiting en webhooks; sin audit log de seguridad; sin runbook RGPD. Detalle completo en `SECURITY.md`. Estado vivo en `docs/ESTADO.md`.
