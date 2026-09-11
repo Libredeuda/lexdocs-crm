@@ -1,0 +1,10 @@
+# Nunca subir a Vercel: claves locales, dependencias ni carpetas ajenas a la web
+.env
+.env.*
+node_modules
+dist
+server
+supabase
+libertadhipotecaria
+.claude
+docs

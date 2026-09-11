@@ -91,7 +91,8 @@ Hallazgos nuevos:
 - ✅ **"Crear despacho gratis" oculto** (`ALTA_DESPACHOS_ACTIVA = false` en `App.jsx`) hasta la Fase 2.
 - ✅ **Proyecto ajeno `agzcaq…` eliminado** de `ApiKeys.jsx`, `Integrations.jsx` y de los comentarios de los webhooks; se usa `VITE_SUPABASE_URL`.
 - ✅ **Formulario web, Zapier y API REST marcados como "Próximamente"**, con aviso en pantalla: escriben en PostgREST con la anon key (RLS lo impide) y el formulario llevaba fijo el `org_id` de demostración. Hace falta una Edge Function de entrada de leads que valide la clave de API.
-- ⏳ **Web publicada:** falta que José cambie las variables de entorno en Vercel y republique (no hay CLI de Vercel con sesión en este equipo).
+- ✅ **Web publicada arreglada**: Vercel no tenía `VITE_SUPABASE_URL` ni `VITE_SUPABASE_ANON_KEY` (la dirección del proyecto ajeno venía fija en el código). Añadidas en Production (la anon key como `--type config`, pública a propósito) y publicada la versión de `main` desde la CLI (`npx vercel deploy --prod`). El proyecto de Vercel **no está conectado a GitHub**: se publica a mano desde la CLI. `.vercelignore` impide subir `.env*`, `server/`, `supabase/`, etc. Verificado: el bundle apunta a `fmwmjxntbifqquyaddkx`, el login carga sin errores y no contiene secretos.
+- ⏳ Revisar en Supabase → Authentication → URL Configuration que el Site URL sea `https://lexdocs-crm.vercel.app` (afecta a los enlaces de "¿Olvidaste tu contraseña?").
 
 ### Estado real de producción (2026-09-11)
 
