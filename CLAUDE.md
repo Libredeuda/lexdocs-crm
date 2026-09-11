@@ -96,7 +96,7 @@ Variables: copia `.env.example` a `.env`. Solo las `VITE_*` llegan al navegador.
 ## Deuda conocida (prioridad alta)
 
 - ~~`node_modules/` y `dist/` trackeados en git; `vitest` UNMET~~ → resuelto el 2026-09-11 (Fase 0).
-- Proyecto Supabase ajeno `agzcaqgxlyrtbxtyxkwp` fijo en `ApiKeys.jsx` / `Integrations.jsx` — sustituir por `VITE_SUPABASE_URL` (ver `docs/ESTADO.md`).
+- ~~Proyecto Supabase ajeno `agzcaq…` fijo en el código~~ → resuelto el 2026-09-11. La API REST, el formulario web y Zapier siguen sin backend (marcados "Próximamente").
 - Migración 020 escrita pero sin aplicar (2026-09-11): aplicarla ANTES de desplegar `carlota-chat`/`verify-document` nuevas.
 - Toda tabla nueva necesita RLS y su política `mfa_email_gate` en la misma migración (lo comprueba `npm test`).
 - Proyecto Supabase `lexdocs-prod` en plan gratuito: se pausa tras 7 días sin actividad. Reactivar desde el panel de Supabase antes de probar contra producción.
