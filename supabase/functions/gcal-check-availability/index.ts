@@ -4,6 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { identificarLlamador, noAutorizado } from "../_shared/llamador.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -93,9 +94,20 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const llamador = await identificarLlamador(req, supabase);
+    if (!llamador) return noAutorizado(corsHeaders);
+
     const { userId, date, time, durationMinutes } = await req.json();
     if (!userId || !date || !time) {
       throw new Error("userId, date y time son requeridos");
+    }
+
+    // Un usuario solo consulta la agenda de alguien de su propio despacho
+    if (llamador.tipo === "usuario") {
+      const { data: objetivo } = llamador.orgId
+        ? await supabase.from("users").select("id").eq("id", userId).eq("org_id", llamador.orgId).maybeSingle()
+        : { data: null };
+      if (!objetivo) return noAutorizado(corsHeaders);
     }
     const dur = Number(durationMinutes) || 60;
 

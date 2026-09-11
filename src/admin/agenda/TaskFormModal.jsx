@@ -121,10 +121,11 @@ export default function TaskFormModal({ initialData = null, defaultDate = null, 
       if (eventType === "meeting" && assignedTo) {
         try {
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-          const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+          // Las funciones exigen la sesión del usuario (la anon key sola no basta)
+          const { data: { session } } = await supabase.auth.getSession();
           const checkRes = await fetch(`${supabaseUrl}/functions/v1/gcal-check-availability`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
             body: JSON.stringify({
               userId: assignedTo,
               date: eventDate,
@@ -174,10 +175,11 @@ export default function TaskFormModal({ initialData = null, defaultDate = null, 
       // Sincronizar con Google Calendar
       if (savedEvent && ["meeting", "call", "hearing"].includes(eventType)) {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        // Las funciones exigen la sesión del usuario (la anon key sola no basta)
+        const { data: { session } } = await supabase.auth.getSession();
         fetch(`${supabaseUrl}/functions/v1/gcal-sync-event`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
           body: JSON.stringify({ eventId: savedEvent.id, action: isEdit ? "update" : "create" }),
         }).catch(() => {});
       }

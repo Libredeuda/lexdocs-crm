@@ -93,7 +93,8 @@ Hallazgos nuevos:
 - ✅ `Carlota.jsx`: si el servidor devuelve límite o error, muestra un mensaje claro en vez de una respuesta de demostración (que parecía consejo legal real).
 - ✅ Todas las funciones cambiadas pasan `deno check`.
 - ⏳ **Para activarlo (necesita el visto bueno de José):** aplicar la migración 020 en `lexdocs-prod` y **después** desplegar `carlota-chat` y `verify-document`.
-- ⏳ Falta de la Fase 1: proteger `send-notification`, `web-push-send`, `gcal-check-availability` y `gcal-sync-event` antes de desplegarlas; alertas de errores.
+- ✅ `send-notification`, `gcal-check-availability` y `gcal-sync-event` exigen usuario con despacho y solo actúan dentro de él; `web-push-send` solo acepta llamadas internas (`_shared/llamador.ts`). Los 5 puntos de la app que las llaman envían ya el token de sesión, no la anon key. `deno check` OK salvo un aviso de tipos de la librería `web-push` que ya existía antes.
+- ⏳ Falta de la Fase 1: alertas cuando `function_errors` reciba errores.
 
 ### Arreglos de lo roto (2026-09-11)
 

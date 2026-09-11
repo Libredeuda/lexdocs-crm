@@ -59,7 +59,8 @@ export default function AssignCaseModal({ caseData, onClose, onSaved }) {
 
       if (newRecipients.length > 0) {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        // Las funciones exigen la sesión del usuario (la anon key sola no basta)
+        const { data: { session } } = await supabase.auth.getSession();
         const { data: { user: authUser } } = await supabase.auth.getUser();
         let assignerName = "";
         if (authUser) {
@@ -68,7 +69,7 @@ export default function AssignCaseModal({ caseData, onClose, onSaved }) {
         }
         fetch(`${supabaseUrl}/functions/v1/send-notification`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
           body: JSON.stringify({
             type: "assignment",
             recipientUserIds: newRecipients,

@@ -4,6 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { identificarLlamador, noAutorizado } from "../_shared/llamador.ts";
 import webpush from "https://esm.sh/web-push@3.6.7";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -31,6 +32,10 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+  // Solo uso interno (task-reminders-cron la llama con la service_role)
+  const llamador = await identificarLlamador(req, supabase);
+  if (llamador?.tipo !== "interno") return noAutorizado(corsHeaders);
 
   try {
     if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {

@@ -120,9 +120,11 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
 ## 6. Superficie pública / Edge Functions
 
 - ✅ Webhooks validan **firma HMAC** (Stripe `Stripe-Signature`, Meta `X-Hub-Signature-256`).
-- ⚠️ Funciones con sesión validan JWT + `org_id`… **salvo `send-notification`, `web-push-send`,
-  `gcal-check-availability` y `gcal-sync-event`, que no validan al llamador** (el gateway acepta la
-  anon key como JWT). Ninguna de las cuatro está desplegada: arreglar antes de desplegarlas.
+- ✅ Funciones con sesión validan JWT + `org_id`. `send-notification`, `gcal-check-availability` y
+  `gcal-sync-event` (antes abiertas: el gateway acepta la anon key como JWT) usan desde el 2026-09-11
+  `_shared/llamador.ts` y solo actúan dentro del despacho del llamador; `web-push-send` solo acepta
+  llamadas internas (service_role o `X-Internal-Secret`). El frontend envía el token de sesión.
+  Sin desplegar (no lo estaban).
   `verify-document` se corrigió y desplegó el 2026-09-11 (exige sesión de usuario y limita la imagen a ~5 MB).
 - ⚠️ **Rate limiting** en funciones de IA: **hecho en código, sin desplegar** (migration-020
   `consume_usage` + `_shared/limites.ts`): `carlota-chat` y `verify-document` limitan por usuario
@@ -196,7 +198,7 @@ Datos personales sensibles (clientes, deudas, expedientes). Antes de vender lice
 - [ ] Programar los **crons** (recordatorios, renovaciones, dunning) — hoy no corren.
 - [ ] **MFA** obligatorio para staff + rate limiting/lockout de login. *(MFA por email y TOTP ya disponibles opt-in)*
 - [x] Autenticar al llamador en `verify-document` (2026-09-11).
-- [ ] Autenticar al llamador en `send-notification`, `web-push-send`, `gcal-check-availability`, `gcal-sync-event`.
+- [x] Autenticar al llamador en `send-notification`, `web-push-send`, `gcal-check-availability`, `gcal-sync-event` (código, 2026-09-11).
 - [ ] Derechos RGPD (export/borrado) + política de retención + DPA.
 
 ### 🟠 P1 — antes de escalar

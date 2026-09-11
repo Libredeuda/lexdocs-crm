@@ -4,6 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { identificarLlamador, noAutorizado } from "../_shared/llamador.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -139,6 +140,9 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const llamador = await identificarLlamador(req, supabase);
+    if (!llamador) return noAutorizado(corsHeaders);
+
     const { eventId, action } = await req.json();
     if (!eventId || !["create", "update", "delete"].includes(action)) {
       throw new Error("eventId y action ('create'|'update'|'delete') requeridos");
@@ -151,6 +155,10 @@ serve(async (req: Request) => {
       .eq("id", eventId)
       .single();
     if (evErr || !ev) throw new Error(`Evento no encontrado: ${evErr?.message || eventId}`);
+    // Un usuario solo sincroniza eventos de su propio despacho
+    if (llamador.tipo === "usuario" && (!llamador.orgId || ev.org_id !== llamador.orgId)) {
+      return noAutorizado(corsHeaders);
+    }
 
     if (!ev.assigned_to) {
       return new Response(

@@ -4,6 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { identificarLlamador, noAutorizado } from "../_shared/llamador.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -160,6 +161,12 @@ serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // Solo otra función/cron o un usuario con despacho; un usuario solo notifica dentro de su despacho
+    const llamador = await identificarLlamador(req, supabase);
+    if (!llamador) return noAutorizado(corsHeaders);
+    const orgDelLlamador = llamador.tipo === "usuario" ? llamador.orgId : null;
+    if (llamador.tipo === "usuario" && !orgDelLlamador) return noAutorizado(corsHeaders);
+
     const body = await req.json();
     const { type, recipientUserIds, caseId, contactId, messageContent, assignerName } = body;
 
@@ -171,28 +178,32 @@ serve(async (req: Request) => {
     }
 
     // Cargar destinatarios
-    const { data: recipients } = await supabase
+    let qRecipients = supabase
       .from("users")
       .select("id, full_name, email, phone, whatsapp, org_id")
       .in("id", recipientUserIds);
+    if (orgDelLlamador) qRecipients = qRecipients.eq("org_id", orgDelLlamador);
+    const { data: recipients } = await qRecipients;
 
     // Cargar caso + contacto
     let caseInfo: any = null;
     let contactInfo: any = null;
     if (caseId) {
-      const { data: c } = await supabase
+      let qCase = supabase
         .from("cases")
         .select("*, contact:contacts(first_name, last_name, email, phone)")
-        .eq("id", caseId)
-        .single();
+        .eq("id", caseId);
+      if (orgDelLlamador) qCase = qCase.eq("org_id", orgDelLlamador);
+      const { data: c } = await qCase.maybeSingle();
       caseInfo = c;
       contactInfo = c?.contact;
     } else if (contactId) {
-      const { data: ct } = await supabase
+      let qContact = supabase
         .from("contacts")
         .select("*")
-        .eq("id", contactId)
-        .single();
+        .eq("id", contactId);
+      if (orgDelLlamador) qContact = qContact.eq("org_id", orgDelLlamador);
+      const { data: ct } = await qContact.maybeSingle();
       contactInfo = ct;
     }
 

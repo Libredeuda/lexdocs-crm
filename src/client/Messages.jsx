@@ -119,10 +119,11 @@ export default function Messages({ user, firstName }) {
 
       // Notificar al destinatario por email/WhatsApp
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      // Las funciones exigen la sesión del usuario (la anon key sola no basta)
+      const { data: { session } } = await supabase.auth.getSession();
       fetch(`${supabaseUrl}/functions/v1/send-notification`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
         body: JSON.stringify({
           type: "message",
           recipientUserIds: [selectedRecipientId],
