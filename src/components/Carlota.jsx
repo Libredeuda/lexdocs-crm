@@ -148,8 +148,14 @@ export default function Carlota({ user, currentModule = "general", currentContex
               currentContext,
             }),
           });
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           if (data.success) reply = data.reply;
+          else if (data.code === 'limite' || data.code === 'demasiado_grande') {
+            // Límite de uso o mensaje enorme: el servidor ya da el texto para el usuario
+            setMessages(prev => [...prev, { role: 'assistant', content: data.error, timestamp: Date.now() }]);
+            setIsTyping(false);
+            return;
+          }
           else throw new Error(data.error || 'Edge function error');
         }
 
@@ -161,9 +167,10 @@ export default function Carlota({ user, currentModule = "general", currentContex
           setMessages(prev => [...prev, { role: 'assistant', content: demo, timestamp: Date.now() }]);
         }
       } catch (e) {
+        // Con sesión real no se muestran respuestas de demostración: parecerían
+        // consejo legal de Carlota sin serlo.
         console.error('Carlota (edge function) error:', e);
-        const reply = matchDemoResponse(msg, firstName);
-        setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Ahora mismo no puedo responderte. Inténtalo de nuevo en unos minutos; si es urgente, escribe a tu despacho.', timestamp: Date.now() }]);
       }
     } else {
       // ═══ MODO DEMO ═══

@@ -84,6 +84,17 @@ Hallazgos nuevos:
 - ⏳ Sin hacer en esta sesión (sigue en la Fase 0 del roadmap): comprobar qué migraciones están aplicadas en producción y aplicar 015/016 si faltan.
 - ⏳ `npm audit` avisa de vulnerabilidades en dependencias de desarrollo (babel, vitest/mocker, brace-expansion, browserslist). No llegan al navegador; revisar con `npm audit fix` en una sesión aparte.
 
+### Fase 1 — seguridad barata (2026-09-11, en código; pendiente de desplegar)
+
+- ✅ `src/schema.test.js` (en `npm test`): falla si una tabla de public termina sin RLS, si una migración posterior a la 010 desactiva RLS, si una tabla creada después de la 019 no lleva `mfa_email_gate`, si hay huecos en la numeración o si `_bootstrap.sql` no está regenerado. Comprobado con una migración falsa.
+- ✅ `migration-020-usage-limits-errors.sql`: `usage_counters` + `consume_usage()` (contador atómico por usuario/minuto, usuario/día y despacho/día; solo `service_role`) y `function_errors`. Probada con 8 casos en PGlite.
+- ✅ `carlota-chat`: límite de uso (10/min por usuario; diario por usuario = `tenants.max_carlota_messages_per_day`; 1.000/día por despacho), petición ≤ 200.000 caracteres, registro de errores. **Corrige un fallo**: pedía `users.first_name`, que no existe, así que la consulta fallaba y trataba a todo el staff como cliente.
+- ✅ `verify-document`: límite (10/min, 100/día por usuario; 1.000/día por despacho) y registro de errores.
+- ✅ `Carlota.jsx`: si el servidor devuelve límite o error, muestra un mensaje claro en vez de una respuesta de demostración (que parecía consejo legal real).
+- ✅ Todas las funciones cambiadas pasan `deno check`.
+- ⏳ **Para activarlo (necesita el visto bueno de José):** aplicar la migración 020 en `lexdocs-prod` y **después** desplegar `carlota-chat` y `verify-document`.
+- ⏳ Falta de la Fase 1: proteger `send-notification`, `web-push-send`, `gcal-check-availability` y `gcal-sync-event` antes de desplegarlas; alertas de errores.
+
 ### Arreglos de lo roto (2026-09-11)
 
 - ✅ **Datos iniciales cargados en `lexdocs-prod`** con el nuevo `supabase/_seed_despacho.sql` (script manual y re-ejecutable): 1 embudo con 5 etapas y 66 tipos de documento (30 LSO + 36 concurso). Sin usuarios ni datos de demostración.

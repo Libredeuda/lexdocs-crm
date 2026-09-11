@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { sesionConMfaEmailOk } from "../_shared/mfaEmail.ts";
+import { consumirUso, LIMITES } from "../_shared/limites.ts";
+import { registrarError } from "../_shared/errores.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -52,6 +54,9 @@ serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  let userId: string | null = null;
+  let orgId: string | null = null;
   try {
     if (!ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY not configured");
@@ -60,12 +65,21 @@ serve(async (req: Request) => {
     // Solo usuarios con sesión real (la anon key sola no basta): evita que
     // cualquiera con la clave pública gaste saldo de Anthropic.
     const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
     const { data: { user } } = jwt ? await supabaseAdmin.auth.getUser(jwt) : { data: { user: null } };
     if (!user || !(await sesionConMfaEmailOk(jwt))) {
       return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    userId = user.id;
+
+    // Despacho del llamador (staff en users; cliente en contacts por email)
+    const { data: staff } = await supabaseAdmin.from("users").select("org_id").eq("id", user.id).maybeSingle();
+    if (staff) orgId = staff.org_id;
+    else {
+      const { data: contacto } = await supabaseAdmin.from("contacts").select("org_id").eq("email", user.email || "").maybeSingle();
+      orgId = contacto?.org_id || null;
     }
 
     const body = await req.json();
@@ -93,6 +107,13 @@ serve(async (req: Request) => {
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    const uso = await consumirUso(supabaseAdmin, "verify-document", user.id, orgId, LIMITES["verify-document"]);
+    if (!uso.ok) {
+      return new Response(JSON.stringify({ success: false, code: "limite", error: uso.mensaje, retry_after: uso.reintentarEn }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(uso.reintentarEn) },
+      });
     }
 
     const prompt = buildPrompt(
@@ -164,6 +185,7 @@ serve(async (req: Request) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
+    await registrarError(supabaseAdmin, "verify-document", error, { userId, orgId });
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -1,12 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { sesionConMfaEmailOk } from "../_shared/mfaEmail.ts";
+import { consumirUso, LIMITES } from "../_shared/limites.ts";
+import { registrarError } from "../_shared/errores.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Tamaño máximo de la petición (la conversación se recorta a 10 mensajes al llamar a Claude)
+const MAX_BODY_CHARS = 200_000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -111,6 +116,8 @@ serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  let userId: string | null = null;
+  let orgId: string | null = null;
   try {
     if (!ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY not configured");
@@ -124,21 +131,51 @@ serve(async (req: Request) => {
     if (authErr || !user) throw new Error("Invalid session");
     if (!(await sesionConMfaEmailOk(jwt))) throw new Error("Email verification required");
 
-    // Resolver rol real y nombre desde DB
+    userId = user.id;
+
+    // Resolver rol real, nombre y despacho desde DB (users no tiene first_name:
+    // se toma la primera palabra de full_name)
     let realRole = "client";
     let realFirstName = "";
     const { data: staffRow } = await supabaseAdmin
-      .from("users").select("first_name, role").eq("id", user.id).maybeSingle();
+      .from("users").select("full_name, role, org_id").eq("id", user.id).maybeSingle();
     if (staffRow) {
       realRole = staffRow.role || "user";
-      realFirstName = staffRow.first_name || "";
+      realFirstName = (staffRow.full_name || "").split(" ")[0];
+      orgId = staffRow.org_id;
     } else {
       const { data: contactRow } = await supabaseAdmin
-        .from("contacts").select("first_name").eq("email", user.email || "").maybeSingle();
+        .from("contacts").select("first_name, org_id").eq("email", user.email || "").maybeSingle();
       realFirstName = contactRow?.first_name || (user.email?.split("@")[0] || "usuario");
+      orgId = contactRow?.org_id || null;
     }
 
-    const { messages, currentModule, currentContext } = await req.json();
+    // Tamaño de la petición
+    const raw = await req.text();
+    if (raw.length > MAX_BODY_CHARS) {
+      return new Response(JSON.stringify({ success: false, code: "demasiado_grande", error: "El mensaje es demasiado largo." }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { messages, currentModule, currentContext } = JSON.parse(raw);
+    if (!Array.isArray(messages) || messages.length === 0) throw new Error("messages required");
+
+    // Límite de uso (antes de gastar en Anthropic). El diario por usuario sale del plan del despacho.
+    let porDia = LIMITES.carlota.porDia;
+    if (orgId) {
+      const { data: org } = await supabaseAdmin
+        .from("organizations").select("tenants(max_carlota_messages_per_day)").eq("id", orgId).maybeSingle();
+      // Relación muchos-a-uno: PostgREST devuelve un objeto, aunque el tipo diga array
+      const t: unknown = org?.tenants;
+      const tenant = (Array.isArray(t) ? t[0] : t) as { max_carlota_messages_per_day?: number } | null | undefined;
+      porDia = tenant?.max_carlota_messages_per_day ?? porDia;
+    }
+    const uso = await consumirUso(supabaseAdmin, "carlota", user.id, orgId, { ...LIMITES.carlota, porDia });
+    if (!uso.ok) {
+      return new Response(JSON.stringify({ success: false, code: "limite", error: uso.mensaje, retry_after: uso.reintentarEn }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(uso.reintentarEn) },
+      });
+    }
 
     const systemPrompt = buildSystemPrompt(realFirstName, realRole, currentModule || "general", currentContext || {});
 
@@ -170,6 +207,7 @@ serve(async (req: Request) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
+    await registrarError(supabaseAdmin, "carlota-chat", error, { userId, orgId });
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
