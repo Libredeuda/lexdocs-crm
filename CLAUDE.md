@@ -91,8 +91,8 @@ Variables: copia `.env.example` a `.env`. Solo las `VITE_*` llegan al navegador.
 
 ## Deuda conocida (prioridad alta)
 
-- `node_modules/` y `dist/` están **trackeados en git** a pesar del `.gitignore` (6.200+ archivos). Hay que sacarlos del índice (`git rm -r --cached node_modules dist`) en el primer commit.
-- `vitest` figura como dependencia no instalada (`npm ls` la marca UNMET) — revisar `package-lock.json`.
+- ~~`node_modules/` y `dist/` trackeados en git; `vitest` UNMET~~ → resuelto el 2026-09-11 (Fase 0).
+- Proyecto Supabase ajeno `agzcaqgxlyrtbxtyxkwp` fijo en `ApiKeys.jsx` / `Integrations.jsx` — sustituir por `VITE_SUPABASE_URL` (ver `docs/ESTADO.md`).
 - Migraciones 015 y 016 estaban sin aplicar en producción en la última revisión (2026-06-16). Verificar antes de seguir.
 - Proyecto Supabase `lexdocs-prod` en plan gratuito: se pausa tras 7 días sin actividad. Reactivar desde el panel de Supabase antes de probar contra producción.
 - Sin rate limiting en funciones de IA ni en webhooks; sin audit log de seguridad; sin runbook RGPD. Detalle completo en `SECURITY.md`.

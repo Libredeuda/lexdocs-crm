@@ -49,9 +49,39 @@ RLS completo, storage por `org_id`, webhooks firmados, clave Anthropic fuera del
 | Rate limiting (IA, login, webhooks) | ❌ | Riesgo de coste por abuso de `carlota-chat` y `verify-document` |
 | Audit log de seguridad, error tracking (Sentry), runbook de incidentes, retención RGPD, derechos ARCO | ❌ | Listado completo en `SECURITY.md` §5–§8 |
 | Test automatizado de que toda tabla nueva tenga RLS | ❌ | Un test SQL de 20 líneas cierra el riesgo más caro |
-| Limpieza del repositorio | ❌ | `node_modules/` y `dist/` trackeados (6.200 archivos); `vitest` no instalado según `npm ls` |
+| Limpieza del repositorio | ✅ 2026-09-11 | `node_modules/`, `dist/` y `.DS_Store` fuera del índice; devDependencies instaladas, `npm ls` limpio |
 | Dominio propio en Vercel | ? | Comprobar `app.libredeudaabogados.com` |
 | Onboarding self-service de un despacho nuevo (alta de tenant + primer admin + Stripe) | ⚠️ | Existe `_create_admin.sql` manual; no hay flujo de registro público |
+
+## Verificación Fase 0 (2026-09-11) — discrepancias entre documentación y código
+
+Confirmado: 35 tablas en `_bootstrap.sql`, las 35 con `ENABLE ROW LEVEL SECURITY`; 17 Edge Functions; embeddings `vector(1024)`; multi-tenancy por subdominio/`?tenant=` vía RPC `get_tenant_by_slug`; MFA TOTP opt-in; reset de contraseña; cuentas demo detrás de `VITE_DEMO_MODE`; LexConsulta hace búsqueda de texto completo (`textSearch`, config `spanish`) sobre `title`/`summary`.
+
+Hallazgos nuevos:
+
+- 🔴 **Tercer proyecto Supabase en el código: `agzcaqgxlyrtbxtyxkwp`.** No es `lexdocs-prod` ni el antiguo. Aparece fijo (sin variable de entorno) en `src/admin/settings/ApiKeys.jsx` (`BASE_URL`, la URL que se enseña al despacho en la documentación de la API), como valor por defecto en `src/admin/integrations/Integrations.jsx` y en los comentarios de `webhook-meta-leads` y `webhook-whatsapp`. Hay que confirmar qué proyecto es y sustituirlo por `VITE_SUPABASE_URL`.
+- ⚠️ **La "API REST con claves" solo está a medias.** La pantalla genera claves de tenant y guarda su hash en `api_keys`, pero ninguna Edge Function comprueba después `key_hash`. Los ejemplos `curl` que ve el despacho usan la anon key directamente contra PostgREST, y sin el JWT de un usuario RLS no devuelve nada. En la práctica la API no funciona para un tercero (Zapier incluido).
+- ⚠️ **`supabase/schema.sql`** (esquema base, lo que sería la "migración 000") no sale en el mapa de `CLAUDE.md`. `_generate_bootstrap.py` lo concatena con las migraciones.
+- 🔴 **`_bootstrap.sql` empieza con `drop schema if exists public cascade`.** Borra la base de datos entera. Solo sirve para un proyecto vacío; **nunca** se debe ejecutar contra `lexdocs-prod` si ya tiene datos.
+- ⚠️ **`SECURITY.md` §5 y §11 están desfasados.** Dicen que la contraseña demo `1234` está en `constants.js`/`App.jsx`/`README.md` y que no hay MFA. Hoy la demo está detrás del flag y el MFA opcional existe. Además, `Login.jsx` (solo en modo demo) muestra cuentas de staff `carlos@`/`ana@`/`laura@libredeuda.com` con contraseña `admin1234`: hay que confirmar que no existen en producción con esa contraseña.
+- ℹ️ La tabla `search_history` (la que hace privada la migración 016) no se usa desde el frontend; `saved_items` sí se usa.
+- ℹ️ `npm ls` no solo marcaba `vitest`: faltaban 7 devDependencies (`eslint`, `@eslint/js`, `eslint-plugin-react`, `eslint-plugin-react-hooks`, `globals`, `jsdom`, `vitest`). `package-lock.json` era correcto; simplemente no estaban instaladas.
+- ℹ️ Estaban en git 6.233 archivos de `node_modules/` y 2 de `dist/` (6.235 en total), además de `.DS_Store`.
+- ⚠️ **El alta self-service sí existe en la interfaz, pero no puede funcionar.** El botón "¿No tienes cuenta? Crear despacho gratis" del login abre `src/components/Onboarding.jsx`, que llama a `supabase.auth.signUp` y luego intenta insertar en `tenants`, `organizations`, `users`, `pipelines`, etc. directamente desde el navegador. `tenants` y `organizations` no tienen política RLS de `INSERT`, así que la inserción falla y queda creado un usuario de Auth huérfano. Además, que el navegador cree tenants choca con la regla 2 de `CLAUDE.md`. La Fase 2 del roadmap (Edge Function `tenant-signup`) debe sustituir este flujo, y mientras tanto conviene ocultar el botón.
+- ⚠️ **El trial del tenant `libredeuda` venció el 02-07-2026** (`trial_ends_at` en producción) aunque tiene `plan = 'pro'`. Hay que comprobar si la app bloquea algo por ello.
+- ℹ️ Tampoco figuran en el mapa: `src/client/Messages.jsx`, `src/lib/hooks/` (`useContacts`, `useWebPush`), `public/sw.js` (service worker de push) y `.claude/launch.json` (arranca el repo hermano `../libredeuda-web`).
+
+### Resultado de la Fase 0 (2026-09-11)
+
+- ✅ `lexdocs-prod` reactivado (estaba pausado; ahora `ACTIVE_HEALTHY`). La RPC `get_tenant_by_slug('libredeuda')` responde con la anon key y RLS devuelve `[]` al leer `contacts` sin sesión.
+- ✅ `node_modules/`, `dist/` y `.DS_Store` fuera del índice de git (siguen en disco).
+- ✅ `npm install` → `npm ls` sin nada UNMET. `package-lock.json` no ha cambiado.
+- ✅ `.env` local creado con URL + anon key de `lexdocs-prod` (ignorado por git).
+- ✅ `npm run dev` → el login carga sin errores en consola (Chrome headless, comprobado por protocolo de depuración).
+- ✅ `npm run lint` (0 errores, 80 avisos: variables sin usar y dependencias de `useEffect`), `npm test` (12/12) y `npm run build` en verde.
+- ✅ El bundle de producción no contiene `admin1234`, cuentas demo ni secretos (`service_role`, `sk_live`, `sk-ant`, `whsec_`).
+- ⏳ Sin hacer en esta sesión (sigue en la Fase 0 del roadmap): comprobar qué migraciones están aplicadas en producción y aplicar 015/016 si faltan.
+- ⏳ `npm audit` avisa de vulnerabilidades en dependencias de desarrollo (babel, vitest/mocker, brace-expansion, browserslist). No llegan al navegador; revisar con `npm audit fix` en una sesión aparte.
 
 ## Decisiones ya tomadas (no reabrir sin motivo)
 
@@ -67,3 +97,5 @@ RLS completo, storage por `org_id`, webhooks firmados, clave Anthropic fuera del
 2. ¿El proyecto Supabase `ujhulpkcllrcgftqeelx` se puede borrar?
 3. ¿Hay ya despachos reales (aparte de LibreDeuda) con datos en `lexdocs-prod`? Condiciona cuánto cuidado hace falta con las migraciones.
 4. ¿Se mantiene `libertadhipotecaria/` dentro de este repositorio o se mueve al suyo?
+5. ¿Qué es el proyecto Supabase `agzcaqgxlyrtbxtyxkwp` que aparece en `ApiKeys.jsx` e `Integrations.jsx`?
+6. ¿Existen en producción las cuentas `carlos@`/`ana@`/`laura@libredeuda.com` con la contraseña `admin1234`?
