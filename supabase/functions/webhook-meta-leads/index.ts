@@ -5,7 +5,7 @@
 // 1. GET con ?hub.mode=subscribe&hub.verify_token=XXX&hub.challenge=YYY (verificación inicial)
 // 2. POST con datos del lead (cuando alguien rellena el formulario)
 //
-// URL: https://agzcaqgxlyrtbxtyxkwp.supabase.co/functions/v1/webhook-meta-leads?tenant_slug=libredeuda
+// URL: https://<project-ref>.supabase.co/functions/v1/webhook-meta-leads?tenant_slug=libredeuda
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";

@@ -10,7 +10,7 @@ import { getCurrentOrgId } from "../../lib/currentOrg";
 
 const font = "'Poppins', sans-serif";
 const mono = "'SF Mono', 'Fira Code', 'Courier New', monospace";
-const BASE_URL = "https://agzcaqgxlyrtbxtyxkwp.supabase.co";
+const BASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const ANON_PLACEHOLDER = "YOUR_ANON_KEY";
 
 const PERM_OPTIONS = [
@@ -1042,6 +1042,15 @@ export default function ApiKeys() {
           <Check size={15} /> {toast}
         </div>
       )}
+
+      {/* La API aún no valida estas claves en el servidor */}
+      <div style={{
+        marginBottom: 20, padding: "12px 16px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.55,
+        background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", color: C.text,
+      }}>
+        <strong>La API REST todavía no está activa.</strong> Puedes crear y revocar claves, pero el servidor aún no las
+        acepta: los ejemplos de esta pantalla no funcionarán hasta que exista el punto de entrada que las valide.
+      </div>
 
       {/* Page header */}
       <div style={{ marginBottom: 24 }}>

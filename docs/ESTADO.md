@@ -84,6 +84,15 @@ Hallazgos nuevos:
 - ⏳ Sin hacer en esta sesión (sigue en la Fase 0 del roadmap): comprobar qué migraciones están aplicadas en producción y aplicar 015/016 si faltan.
 - ⏳ `npm audit` avisa de vulnerabilidades en dependencias de desarrollo (babel, vitest/mocker, brace-expansion, browserslist). No llegan al navegador; revisar con `npm audit fix` en una sesión aparte.
 
+### Arreglos de lo roto (2026-09-11)
+
+- ✅ **Datos iniciales cargados en `lexdocs-prod`** con el nuevo `supabase/_seed_despacho.sql` (script manual y re-ejecutable): 1 embudo con 5 etapas y 66 tipos de documento (30 LSO + 36 concurso). Sin usuarios ni datos de demostración.
+- ✅ **`verify-document` protegida y desplegada**: exige la sesión del usuario (y el MFA por email, si está activo) y limita la imagen. `ClientApp.jsx` ahora le envía el token de sesión en vez de la anon key. Probado: sin sesión responde 401.
+- ✅ **"Crear despacho gratis" oculto** (`ALTA_DESPACHOS_ACTIVA = false` en `App.jsx`) hasta la Fase 2.
+- ✅ **Proyecto ajeno `agzcaq…` eliminado** de `ApiKeys.jsx`, `Integrations.jsx` y de los comentarios de los webhooks; se usa `VITE_SUPABASE_URL`.
+- ✅ **Formulario web, Zapier y API REST marcados como "Próximamente"**, con aviso en pantalla: escriben en PostgREST con la anon key (RLS lo impide) y el formulario llevaba fijo el `org_id` de demostración. Hace falta una Edge Function de entrada de leads que valide la clave de API.
+- ⏳ **Web publicada:** falta que José cambie las variables de entorno en Vercel y republique (no hay CLI de Vercel con sesión en este equipo).
+
 ### Estado real de producción (2026-09-11)
 
 - 🔴 **La web publicada (lexdocs-crm.vercel.app) está rota**: su bundle apunta a `agzcaqgxlyrtbxtyxkwp.supabase.co`, que ya no existe (no resuelve DNS). Hay que cambiar `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en Vercel para que apunten a `lexdocs-prod` y republicar.

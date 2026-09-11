@@ -4,7 +4,7 @@
 // 1. Verificación inicial: GET con hub.mode/hub.verify_token/hub.challenge
 // 2. Mensajes: POST con payload de Meta
 //
-// URL: https://agzcaqgxlyrtbxtyxkwp.supabase.co/functions/v1/webhook-whatsapp?tenant_slug=libredeuda
+// URL: https://<project-ref>.supabase.co/functions/v1/webhook-whatsapp?tenant_slug=libredeuda
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";

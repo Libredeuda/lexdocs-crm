@@ -9,6 +9,12 @@ import { estadoMfaEmail, enviarCodigoEmail, verificarCodigoEmail } from "./lib/m
 // credenciales) se elimina del bundle por dead-code elimination.
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
+// Alta self-service de despachos desde el login: APAGADA. El formulario actual
+// (Onboarding.jsx) inserta tenants/organizations desde el navegador y RLS lo
+// bloquea con razón. Se reactiva cuando exista la Edge Function tenant-signup
+// (Fase 2 de docs/ROADMAP.md).
+const ALTA_DESPACHOS_ACTIVA = false;
+
 // Rutas pesadas en chunks aparte: el bundle inicial solo carga Login.
 const Onboarding = lazy(() => import("./components/Onboarding"));
 const ClientApp = lazy(() => import("./client/ClientApp"));
@@ -148,7 +154,7 @@ export default function App() {
   const [appError, setAppError] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get("onboarding") === "true";
+    return ALTA_DESPACHOS_ACTIVA && params.get("onboarding") === "true";
   });
 
   // On mount: check if there's an existing Supabase session
@@ -299,7 +305,7 @@ export default function App() {
         </Suspense>
       );
     }
-    return <Login onLogin={handleLogin} onShowOnboarding={() => setShowOnboarding(true)} />;
+    return <Login onLogin={handleLogin} onShowOnboarding={ALTA_DESPACHOS_ACTIVA ? () => setShowOnboarding(true) : undefined} />;
   }
 
   const role = user.role;

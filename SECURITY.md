@@ -120,10 +120,10 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
 ## 6. Superficie pública / Edge Functions
 
 - ✅ Webhooks validan **firma HMAC** (Stripe `Stripe-Signature`, Meta `X-Hub-Signature-256`).
-- ⚠️ Funciones con sesión validan JWT + `org_id`… **salvo `verify-document`, `send-notification`,
-  `web-push-send`, `gcal-check-availability` y `gcal-sync-event`, que no validan al llamador**
-  (el gateway acepta la anon key como JWT). `verify-document` está desplegada y llama a
-  Anthropic → riesgo de coste. Detectado el 2026-09-11. → P0.
+- ⚠️ Funciones con sesión validan JWT + `org_id`… **salvo `send-notification`, `web-push-send`,
+  `gcal-check-availability` y `gcal-sync-event`, que no validan al llamador** (el gateway acepta la
+  anon key como JWT). Ninguna de las cuatro está desplegada: arreglar antes de desplegarlas.
+  `verify-document` se corrigió y desplegó el 2026-09-11 (exige sesión de usuario y limita la imagen a ~5 MB).
 - ❌ **Rate limiting** en funciones de IA y webhooks → riesgo de **amplificación de
   coste** (Anthropic/Resend) y spam de contactos. Pendiente (límite por org/IP).
 - ⚠️ **CORS `*`** en todas las funciones. Con JWT+org el riesgo baja, pero conviene
@@ -193,7 +193,8 @@ Datos personales sensibles (clientes, deudas, expedientes). Antes de vender lice
 - [ ] Configurar **todos** los secrets de Edge Functions en el proyecto Supabase.
 - [ ] Programar los **crons** (recordatorios, renovaciones, dunning) — hoy no corren.
 - [ ] **MFA** obligatorio para staff + rate limiting/lockout de login. *(MFA por email y TOTP ya disponibles opt-in)*
-- [ ] Autenticar al llamador en `verify-document`, `send-notification`, `web-push-send`, `gcal-check-availability`, `gcal-sync-event`.
+- [x] Autenticar al llamador en `verify-document` (2026-09-11).
+- [ ] Autenticar al llamador en `send-notification`, `web-push-send`, `gcal-check-availability`, `gcal-sync-event`.
 - [ ] Derechos RGPD (export/borrado) + política de retención + DPA.
 
 ### 🟠 P1 — antes de escalar

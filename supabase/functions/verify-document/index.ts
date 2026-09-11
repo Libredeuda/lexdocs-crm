@@ -1,6 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { sesionConMfaEmailOk } from "../_shared/mfaEmail.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Límite de la imagen en base64 (~7 MB ≈ 5 MB de imagen, el máximo que acepta Claude)
+const MAX_IMAGE_BASE64 = 7_000_000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,11 +57,27 @@ serve(async (req: Request) => {
       throw new Error("ANTHROPIC_API_KEY not configured");
     }
 
+    // Solo usuarios con sesión real (la anon key sola no basta): evita que
+    // cualquiera con la clave pública gaste saldo de Anthropic.
+    const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    const { data: { user } } = jwt ? await supabaseAdmin.auth.getUser(jwt) : { data: { user: null } };
+    if (!user || !(await sesionConMfaEmailOk(jwt))) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json();
     const { imageBase64, mimeType, docName, issuer, validity, criteria, clientName } = body;
 
     if (!imageBase64 || !mimeType) {
       throw new Error("Missing imageBase64 or mimeType");
+    }
+    if (typeof imageBase64 !== "string" || imageBase64.length > MAX_IMAGE_BASE64) {
+      return new Response(JSON.stringify({ success: false, error: "Image too large" }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Only support image types for vision

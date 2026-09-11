@@ -3,7 +3,7 @@ import { Zap, Copy, Check, ExternalLink, AlertCircle, ChevronRight, Code, Globe,
 import { C, font } from "../../constants";
 import { useTenant } from "../../lib/TenantContext";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://agzcaqgxlyrtbxtyxkwp.supabase.co";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 export default function Integrations() {
   const tenant = useTenant();
@@ -39,7 +39,7 @@ export default function Integrations() {
       icon: Globe,
       color: "#22c55e",
       bg: "rgba(34,197,94,0.08)",
-      status: "Disponible",
+      status: "Próximamente",
     },
     {
       id: "zapier",
@@ -48,7 +48,7 @@ export default function Integrations() {
       icon: Webhook,
       color: "#ff4a00",
       bg: "rgba(255,74,0,0.08)",
-      status: "Disponible",
+      status: "Próximamente",
     },
     {
       id: "api",
@@ -57,7 +57,7 @@ export default function Integrations() {
       icon: Code,
       color: C.primary,
       bg: `${C.primary}15`,
-      status: "Disponible",
+      status: "Próximamente",
     },
     {
       id: "whatsapp",
@@ -295,6 +295,9 @@ document.getElementById('lead-form').addEventListener('submit', async (e) => {
       <p style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 18, lineHeight: 1.6 }}>
         Copia este HTML en cualquier página de tu web. Cada lead que se envíe se crea como contacto en tu CRM.
       </p>
+        <Note color="#f59e0b">
+          <strong>Todavía no disponible.</strong> La entrada de leads desde fuera (formulario web, Zapier, API) necesita un punto de entrada en el servidor que valide la clave de API del despacho, y aún no existe. Estas instrucciones no funcionan hasta entonces.
+        </Note>
       <CopyBlock value={html} copy={copy} copied={copied} field="webform" lang="html" />
     </div>
   );
@@ -322,6 +325,9 @@ function ZapierIntegration({ apiBase, copy, copied }) {
       <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
         <Webhook size={18} color="#ff4a00" /> Zapier / Make
       </h3>
+        <Note color="#f59e0b">
+          <strong>Todavía no disponible.</strong> La entrada de leads desde fuera (formulario web, Zapier, API) necesita un punto de entrada en el servidor que valide la clave de API del despacho, y aún no existe. Estas instrucciones no funcionan hasta entonces.
+        </Note>
       <p style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 18, lineHeight: 1.6 }}>
         Crea un Zap (o escenario en Make) con un trigger ("nuevo email", "fila en Google Sheets", etc.) y como acción usa <strong>"Webhooks → POST"</strong> con esta URL y body:
       </p>
@@ -339,6 +345,9 @@ function ApiIntegration({ apiBase, copy, copied }) {
       <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
         <Code size={18} color={C.primary} /> API REST
       </h3>
+        <Note color="#f59e0b">
+          <strong>Todavía no disponible.</strong> La entrada de leads desde fuera (formulario web, Zapier, API) necesita un punto de entrada en el servidor que valide la clave de API del despacho, y aún no existe. Estas instrucciones no funcionan hasta entonces.
+        </Note>
       <p style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 18, lineHeight: 1.6 }}>
         Para integraciones técnicas avanzadas. Ve a <strong>Configuración → API Keys</strong> para ver la documentación completa de endpoints, autenticación y ejemplos cURL.
       </p>

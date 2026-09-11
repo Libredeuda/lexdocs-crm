@@ -19,9 +19,10 @@ async function verifyDocWithAI(file, docId, clientName) {
   }
 
   // Try Edge Function for real Claude Vision verification (only for images)
+  // La función exige la sesión del usuario (no basta la anon key)
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (supabaseUrl && supabaseKey && file.type.startsWith("image/")) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (supabaseUrl && session?.access_token && file.type.startsWith("image/")) {
     try {
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -31,7 +32,7 @@ async function verifyDocWithAI(file, docId, clientName) {
       });
       const res = await fetch(`${supabaseUrl}/functions/v1/verify-document`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({
           imageBase64: base64,
           mimeType: file.type,
