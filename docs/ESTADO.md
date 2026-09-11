@@ -45,12 +45,13 @@ RLS completo, storage por `org_id`, webhooks firmados, clave Anthropic fuera del
 | **Agency Master** (capa de agencia: tablas `agencies`, `agency_users`, dashboard de agencia, marca blanca, facturación por sub-cuenta) | ❌ No existe nada en el código | Era el brief para el equipo de desarrollo; nunca se implementó. Es el bloqueo del modelo comercial con la agencia distribuidora |
 | Embeddings reales en LexConsulta | ❌ | Las columnas `embedding` existen; falta el paso que genera embeddings (Cohere) en los workers y la búsqueda semántica en `SearchView` |
 | Workers en Railway con cron | ❌ | Hoy son scripts manuales |
-| Migraciones 015 y 016 en producción | ⚠️ | Sin aplicar a fecha 16-06-2026 según `SECURITY.md` |
+| Migraciones 015 y 016 en producción | ✅ 2026-09-11 | Verificado en `lexdocs-prod`: 015–018 aplicadas, 35 tablas, 0 sin RLS |
 | Rate limiting (IA, login, webhooks) | ❌ | Riesgo de coste por abuso de `carlota-chat` y `verify-document` |
 | Audit log de seguridad, error tracking (Sentry), runbook de incidentes, retención RGPD, derechos ARCO | ❌ | Listado completo en `SECURITY.md` §5–§8 |
 | Test automatizado de que toda tabla nueva tenga RLS | ❌ | Un test SQL de 20 líneas cierra el riesgo más caro |
 | Limpieza del repositorio | ✅ 2026-09-11 | `node_modules/`, `dist/` y `.DS_Store` fuera del índice; devDependencies instaladas, `npm ls` limpio |
 | Dominio propio en Vercel | ? | Comprobar `app.libredeudaabogados.com` |
+| **MFA por email: puesta en marcha** | ⏸️ Aparcado (2026-09-11, decisión de José: estamos en test) | Código y BD ya en producción, inactivo para todos. Falta: 1) cuenta Resend + secreto `RESEND_API_KEY` en Supabase; 2) verificar el dominio `libredeudaabogados.com` en Resend (sin eso solo envía al email de la cuenta) y fijar `FROM_EMAIL`; 3) publicar el frontend en Vercel; 4) activarlo en Configuración → Seguridad; 5) decidir si se hace obligatorio para staff. Hasta entonces, pulsar "Activar código por email" muestra "El envío de emails no está configurado". |
 | Onboarding self-service de un despacho nuevo (alta de tenant + primer admin + Stripe) | ⚠️ | Existe `_create_admin.sql` manual; no hay flujo de registro público |
 
 ## Verificación Fase 0 (2026-09-11) — discrepancias entre documentación y código
@@ -85,7 +86,7 @@ Hallazgos nuevos:
 
 ### MFA por email (2026-09-11)
 
-Hecho en código, **pendiente de desplegar**: `migration-019-mfa-email.sql`, Edge Function `mfa-email`, `_shared/mfaEmail.ts` (añadido a `carlota-chat`, `ai-lead-scorer`, `pay-installment`, `stripe-checkout`, `ai-agent-respond` y `automation-runner`), pantalla de código en el login (`App.jsx`) y tarjeta en Configuración → Seguridad. Probado con 17 casos sobre PGlite (Postgres en WASM) que imita Supabase: sin código no se ve nada, con código solo lo del propio despacho, y el navegador no puede desactivarlo por su cuenta. **Orden de despliegue:** migración 019 → `mfa-email` + redeploy de `carlota-chat` y `ai-lead-scorer` → secreto `RESEND_API_KEY`. Si una función que importa `_shared/mfaEmail.ts` se despliega antes que la migración, falla cerrada y bloquea su uso.
+**Desplegado el 2026-09-11**: migración 019 aplicada en `lexdocs-prod` (37 tablas con `mfa_email_gate`); `mfa-email`, `carlota-chat` y `ai-lead-scorer` desplegadas. Falta el secreto `RESEND_API_KEY` y publicar el frontend en Vercel. Hecho en código: `migration-019-mfa-email.sql`, Edge Function `mfa-email`, `_shared/mfaEmail.ts` (añadido a `carlota-chat`, `ai-lead-scorer`, `pay-installment`, `stripe-checkout`, `ai-agent-respond` y `automation-runner`), pantalla de código en el login (`App.jsx`) y tarjeta en Configuración → Seguridad. Probado con 17 casos sobre PGlite (Postgres en WASM) que imita Supabase: sin código no se ve nada, con código solo lo del propio despacho, y el navegador no puede desactivarlo por su cuenta. **Orden de despliegue:** migración 019 → `mfa-email` + redeploy de `carlota-chat` y `ai-lead-scorer` → secreto `RESEND_API_KEY`. Si una función que importa `_shared/mfaEmail.ts` se despliega antes que la migración, falla cerrada y bloquea su uso.
 
 Descubierto en producción al preparar el despliegue:
 - Solo 3 de 17 Edge Functions están desplegadas (`carlota-chat`, `ai-lead-scorer`, `verify-document`).
