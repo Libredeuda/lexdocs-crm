@@ -13,6 +13,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { esPlanDeCompra, PLANES } from "../_shared/planes.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -70,12 +71,14 @@ async function syncSubscriptionToTenant(sub: any, tenantIdFallback?: string | nu
     return;
   }
 
-  const planId: string = sub.metadata?.plan_id || "individual";
+  const planId: string = sub.metadata?.plan_id || "starter";
   const cycle: string = sub.metadata?.cycle
     || (sub.items?.data?.[0]?.price?.recurring?.interval === "year" ? "yearly" : "monthly");
-  const licenses: number = parseInt(sub.metadata?.licenses || "", 10)
-    || sub.items?.data?.[0]?.quantity
-    || 1;
+  // Usuarios del despacho: los fija el plan del catálogo (1, 3, 5 o 10); para
+  // planes antiguos o a medida, lo que diga la suscripción
+  const licenses: number = esPlanDeCompra(planId)
+    ? PLANES[planId].usuarios
+    : parseInt(sub.metadata?.licenses || "", 10) || sub.items?.data?.[0]?.quantity || 1;
 
   const updates: Record<string, any> = {
     plan: planId,

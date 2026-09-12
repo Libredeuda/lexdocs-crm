@@ -1,55 +1,45 @@
 import { useState, useEffect } from "react";
-import { CreditCard, Check, Crown, User as UserIcon, Users as UsersIcon, ArrowRight, ExternalLink, Receipt, AlertTriangle, Lock, Repeat } from "lucide-react";
+import { CreditCard, Check, Crown, ArrowRight, ExternalLink, Receipt, AlertTriangle, Lock, Repeat, MessageCircle, ShieldCheck } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from "../../lib/supabase";
 import { useTenant } from "../../lib/TenantContext";
+import { PLANES, PLAN_A_MEDIDA, INCLUIDO_EN_TODOS, planPorId, nombreDePlan, precioAnual, formatoEuros, enlaceWhatsappVentas } from "../../lib/planes";
 
-// ===== Catálogo de planes LibreApp =====
-// Precios en céntimos (como Stripe). unit_price es por licencia/mes.
-const PLAN_CATALOG = {
-  individual: {
-    id: "individual",
-    name: "Individual",
-    subtitle: "1 licencia",
-    icon: UserIcon,
-    color: "#5B6BF0",
-    maxLicenses: 1,
-    monthly: 120,
-    yearly: 99, // por mes facturado anual
-    features: [
-      "1 usuario profesional",
-      "Portal cliente (LexDocs)",
-      "CRM de leads (LexCRM)",
-      "Carlota IA",
-      "LexConsulta (jurisprudencia + BOE)",
-      "Soporte email",
-    ],
-  },
-  team: {
-    id: "team",
-    name: "Team",
-    subtitle: "Hasta 5 licencias",
-    icon: UsersIcon,
-    color: "#7C5BF0",
-    maxLicenses: 5,
-    monthly: 79,
-    yearly: 59, // por mes facturado anual, por licencia
-    popular: true,
-    features: [
-      "De 2 a 5 usuarios",
-      "Todo lo incluido en Individual",
-      "Gestión de equipo (roles)",
-      "Reparto automático de leads",
-      "Soporte prioritario",
-    ],
-  },
-};
+// Interruptor Mensual / Anual con la flecha de "¡2 meses gratis!"
+function SelectorCiclo({ cycle, setCycle }) {
+  const anual = cycle === "yearly";
+  const etiqueta = (activo) => ({ fontSize: 16, fontWeight: 700, color: activo ? C.dark : C.textMuted, fontFamily: font });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 26 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <span style={etiqueta(!anual)}>Mensual</span>
+        <button
+          id="billing-cycle"
+          role="switch"
+          aria-checked={anual}
+          aria-label="Pagar anualmente"
+          onClick={() => setCycle(anual ? "monthly" : "yearly")}
+          style={{ width: 64, height: 34, borderRadius: 17, border: "none", background: anual ? C.primary : "#D9D9DE", position: "relative", cursor: "pointer", transition: "background .2s" }}
+        >
+          <span style={{ position: "absolute", top: 4, left: anual ? 34 : 4, width: 26, height: 26, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.2)", transition: "left .2s" }} />
+        </button>
+        <span style={etiqueta(anual)}>Anual</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, marginLeft: 110 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: C.textMuted, fontFamily: font }}>¡2 meses gratis!</span>
+        <svg width="34" height="30" viewBox="0 0 34 30" aria-hidden="true" style={{ marginBottom: 4 }}>
+          <path d="M28 1 C 31 13, 25 22, 9 24" fill="none" stroke={C.primary} strokeWidth="2" strokeLinecap="round" />
+          <polyline points="14,19 8,24 14,28" fill="none" stroke={C.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+    </div>
+  );
+}
 
 export default function BillingSettings({ user }) {
   const tenant = useTenant();
   const [billing, setBilling] = useState(null);
-  const [cycle, setCycle] = useState("yearly"); // mensual | yearly (para selector)
-  const [licenses, setLicenses] = useState(2);
+  const [cycle, setCycle] = useState("monthly"); // monthly | yearly (para el selector)
   const [toast, setToast] = useState(null);
   const [savingAutoRenew, setSavingAutoRenew] = useState(false);
 
@@ -66,7 +56,6 @@ export default function BillingSettings({ user }) {
         if (data) {
           setBilling(data);
           if (data.billing_cycle) setCycle(data.billing_cycle);
-          if (data.license_count) setLicenses(data.license_count);
         }
       });
   }, [tenant?.id]);
@@ -87,7 +76,7 @@ export default function BillingSettings({ user }) {
 
   const currentPlan = billing?.plan || tenant?.plan || "trial";
   const currentCycle = billing?.billing_cycle;
-  const currentLicenses = billing?.license_count || 1;
+  const currentUsers = planPorId(currentPlan)?.usuarios || billing?.license_count || 1;
   const autoRenew = billing?.auto_renew ?? true;
   const subStatus = billing?.subscription_status;
   const periodEnd = billing?.current_period_end ? new Date(billing.current_period_end) : null;
@@ -97,6 +86,8 @@ export default function BillingSettings({ user }) {
   // Alerta de renovación (anual, a menos de 30 días)
   const renewalWarning = currentCycle === "yearly" && daysToRenewal !== null && daysToRenewal <= 30 && daysToRenewal >= 0;
   const expired = daysToRenewal !== null && daysToRenewal < 0;
+
+  const enlaceWhatsapp = enlaceWhatsappVentas(tenant?.name);
 
   const trialDaysLeft = billing?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(billing.trial_ends_at) - now) / 86400000))
@@ -119,9 +110,7 @@ export default function BillingSettings({ user }) {
 
   async function handleSelectPlan(planId) {
     if (!tenant?.id) return;
-    const plan = PLAN_CATALOG[planId];
-    if (!plan) return;
-    const qty = planId === "team" ? licenses : 1;
+    if (!planPorId(planId)) return;
     setToast("Redirigiendo a Stripe...");
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -138,7 +127,6 @@ export default function BillingSettings({ user }) {
         body: JSON.stringify({
           planId,
           cycle,
-          licenses: qty,
           successUrl: window.location.origin + "?checkout=success",
           cancelUrl: window.location.href,
         }),
@@ -156,12 +144,6 @@ export default function BillingSettings({ user }) {
       setToast("Error de conexión: " + (e.message || e));
     }
     setTimeout(() => setToast(null), 6000);
-  }
-
-  function computeTotal(plan, q, c) {
-    const unit = c === "yearly" ? plan.yearly : plan.monthly;
-    const qty = plan.id === "team" ? q : 1;
-    return unit * qty;
   }
 
   return (
@@ -197,16 +179,16 @@ export default function BillingSettings({ user }) {
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
             <h2 style={{ fontSize: 26, fontWeight: 700 }}>
-              {currentPlan === "trial" ? "Prueba gratuita" : (PLAN_CATALOG[currentPlan]?.name || currentPlan)}
+              {currentPlan === "trial" ? "Prueba gratuita" : nombreDePlan(currentPlan)}
             </h2>
             {currentCycle && (
               <span style={{ fontSize: 13, opacity: 0.85, fontWeight: 500 }}>
                 · {currentCycle === "yearly" ? "Facturación anual" : "Facturación mensual"}
               </span>
             )}
-            {currentPlan === "team" && (
+            {currentPlan !== "trial" && (
               <span style={{ fontSize: 13, opacity: 0.85, fontWeight: 500 }}>
-                · {currentLicenses} licencia{currentLicenses === 1 ? "" : "s"}
+                · {currentUsers === 1 ? "1 usuario" : `hasta ${currentUsers} usuarios`}
               </span>
             )}
           </div>
@@ -251,76 +233,35 @@ export default function BillingSettings({ user }) {
         </div>
       </div>
 
-      {/* Selector ciclo */}
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-        <div style={{ display: "inline-flex", background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: 4 }}>
-          <button onClick={() => setCycle("monthly")} style={{ padding: "8px 18px", borderRadius: 7, fontSize: 12.5, fontWeight: 600, border: "none", background: cycle === "monthly" ? C.sidebar : "transparent", color: cycle === "monthly" ? "#fff" : C.text, cursor: "pointer", fontFamily: font }}>Mensual</button>
-          <button onClick={() => setCycle("yearly")} style={{ padding: "8px 18px", borderRadius: 7, fontSize: 12.5, fontWeight: 600, border: "none", background: cycle === "yearly" ? C.sidebar : "transparent", color: cycle === "yearly" ? "#fff" : C.text, cursor: "pointer", fontFamily: font, display: "flex", alignItems: "center", gap: 6 }}>
-            Anual <span style={{ fontSize: 10, background: C.teal, color: "#fff", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>AHORRA {Math.round((PLAN_CATALOG.individual.monthly - PLAN_CATALOG.individual.yearly) / PLAN_CATALOG.individual.monthly * 100)}%</span>
-          </button>
-        </div>
-      </div>
+      <SelectorCiclo cycle={cycle} setCycle={setCycle} />
 
-      {/* Plan cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, marginBottom: 24 }}>
-        {Object.values(PLAN_CATALOG).map(plan => {
-          const isCurrent = currentPlan === plan.id && currentCycle === cycle && (plan.id !== "team" || currentLicenses === licenses);
-          const PlanIcon = plan.icon;
-          const unitPrice = cycle === "yearly" ? plan.yearly : plan.monthly;
-          const qty = plan.id === "team" ? licenses : 1;
-          const total = computeTotal(plan, qty, cycle);
-          const yearlyTotal = cycle === "yearly" ? total * 12 : null;
+      {/* Planes */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 16 }}>
+        {PLANES.map(plan => {
+          const isCurrent = currentPlan === plan.id && currentCycle === cycle;
+          const anual = cycle === "yearly";
+          const importe = anual ? precioAnual(plan) : plan.mensual;
           return (
-            <div key={plan.id} style={{
-              background: C.card, borderRadius: 14, padding: 22,
-              border: plan.popular ? `2px solid ${plan.color}` : `1px solid ${C.border}`,
-              position: "relative", display: "flex", flexDirection: "column"
-            }}>
-              {plan.popular && (
-                <div style={{ position: "absolute", top: -1, right: 18, background: plan.color, color: "#fff", padding: "4px 12px", borderRadius: "0 0 8px 8px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>Más elegido</div>
-              )}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: `${plan.color}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <PlanIcon size={20} color={plan.color} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: 17, fontWeight: 700 }}>{plan.name}</h3>
-                  <p style={{ fontSize: 11.5, color: C.textMuted }}>{plan.subtitle}</p>
-                </div>
-              </div>
+            <div key={plan.id} style={{ background: C.card, borderRadius: 14, padding: 22, border: `1px solid ${isCurrent ? C.primary : C.border}`, display: "flex", flexDirection: "column" }}>
+              <h3 style={{ fontSize: 17, fontWeight: 700 }}>{plan.nombre}</h3>
+              <p style={{ fontSize: 12.5, color: C.textMuted, marginTop: 2 }}>{plan.usuarios === 1 ? "1 usuario" : `Hasta ${plan.usuarios} usuarios`}</p>
 
-              {/* Precio */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                  <span style={{ fontSize: 34, fontWeight: 700 }}>{unitPrice}€</span>
-                  <span style={{ fontSize: 12, color: C.textMuted }}>/mes{plan.id === "team" ? "/licencia" : ""}</span>
+              <div style={{ margin: "16px 0 14px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 30, fontWeight: 700 }}>{formatoEuros(importe)}</span>
+                  <span style={{ fontSize: 12, color: C.textMuted }}>(+ IVA) /{anual ? "año" : "mes"}</span>
                 </div>
-                {cycle === "yearly" && (
-                  <p style={{ fontSize: 11, color: C.teal, fontWeight: 500, marginTop: 2 }}>Facturado anualmente · {plan.yearly * 12}€/año{plan.id === "team" ? "/licencia" : ""}</p>
+                {anual && (
+                  <p style={{ fontSize: 11.5, color: C.teal, fontWeight: 500, marginTop: 4 }}>
+                    Equivale a {formatoEuros(Math.round(importe / 12 * 100) / 100)}/mes · 2 meses gratis
+                  </p>
                 )}
               </div>
 
-              {/* Selector de licencias (team) */}
-              {plan.id === "team" && (
-                <div style={{ marginBottom: 14, padding: "12px 14px", background: C.bg, borderRadius: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 12, color: C.textMuted }}>Licencias</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <button onClick={() => setLicenses(l => Math.max(2, l - 1))} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border}`, background: C.card, cursor: "pointer", fontSize: 14, fontWeight: 700 }}>−</button>
-                      <span style={{ fontSize: 14, fontWeight: 700, minWidth: 20, textAlign: "center" }}>{licenses}</span>
-                      <button onClick={() => setLicenses(l => Math.min(plan.maxLicenses, l + 1))} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border}`, background: C.card, cursor: "pointer", fontSize: 14, fontWeight: 700 }}>+</button>
-                    </div>
-                  </div>
-                  <p style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>Mín. 2 · Máx. {plan.maxLicenses}</p>
-                  <p style={{ fontSize: 12.5, fontWeight: 600, marginTop: 6 }}>Total: {total}€/mes</p>
-                  {yearlyTotal && <p style={{ fontSize: 11, color: C.teal }}>{yearlyTotal}€ facturados anualmente</p>}
-                </div>
-              )}
-
               <div style={{ flex: 1, marginBottom: 16 }}>
-                {plan.features.map((f, i) => (
+                {INCLUIDO_EN_TODOS.map((f, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-                    <Check size={14} color={plan.color} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <Check size={14} color={C.primary} style={{ flexShrink: 0, marginTop: 2 }} />
                     <span style={{ fontSize: 12.5, color: C.text, lineHeight: 1.4 }}>{f}</span>
                   </div>
                 ))}
@@ -332,28 +273,37 @@ export default function BillingSettings({ user }) {
                 style={{
                   width: "100%", padding: 12, borderRadius: 10, fontSize: 13.5, fontWeight: 600, border: "none",
                   cursor: isCurrent ? "default" : "pointer", fontFamily: font,
-                  background: isCurrent ? C.bg : `linear-gradient(135deg, ${plan.color}, ${plan.color}cc)`,
-                  color: isCurrent ? C.textMuted : "#fff",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+                  background: isCurrent ? C.bg : C.primary, color: isCurrent ? C.textMuted : "#fff",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                 }}
               >
-                {isCurrent ? "Plan actual" : <><ArrowRight size={14} /> Seleccionar</>}
+                {isCurrent ? "Plan actual" : <><ArrowRight size={14} /> Elegir {plan.nombre}</>}
               </button>
             </div>
           );
         })}
       </div>
 
-      {/* Enterprise */}
+      <p style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12.5, color: C.textMuted, marginBottom: 22 }}>
+        <ShieldCheck size={15} color={C.teal} /> Si en 14 días LibreApp no te convence, te devolvemos el dinero.
+      </p>
+
+      {/* A medida */}
       <div style={{ background: C.card, borderRadius: 14, padding: "18px 22px", border: `1px solid ${C.border}`, marginBottom: 22, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
         <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg, #1E1E2E, #353550)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <Crown size={20} color="#f59e0b" />
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <h4 style={{ fontSize: 14.5, fontWeight: 600 }}>¿Más de 5 usuarios? Plan Enterprise</h4>
-          <p style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>Sin límite de licencias, SLA, formación, migración y soporte dedicado.</p>
+          <h4 style={{ fontSize: 14.5, fontWeight: 600 }}>¿Más de {PLAN_A_MEDIDA.desdeUsuarios - 1} usuarios? Plan {PLAN_A_MEDIDA.nombre}</h4>
+          <p style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>Cuéntanos cómo es tu despacho y te preparamos una propuesta.</p>
         </div>
-        <button onClick={() => { setToast("Contacta con ventas@libreapp.com"); setTimeout(() => setToast(null), 3000); }} style={{ padding: "9px 18px", borderRadius: 8, background: C.sidebar, color: "#fff", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: font }}>Contactar ventas</button>
+        {enlaceWhatsapp ? (
+          <a href={enlaceWhatsapp} target="_blank" rel="noopener noreferrer" style={{ padding: "9px 18px", borderRadius: 8, background: "#25d366", color: "#fff", fontSize: 12.5, fontWeight: 600, textDecoration: "none", fontFamily: font, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <MessageCircle size={14} /> Hablar por WhatsApp
+          </a>
+        ) : (
+          <span style={{ padding: "9px 18px", borderRadius: 8, background: C.bg, color: C.textMuted, fontSize: 12.5, fontWeight: 600, fontFamily: font }}>WhatsApp: muy pronto</span>
+        )}
       </div>
 
       {/* Facturas (mock hasta que Stripe webhook las alimente) */}
