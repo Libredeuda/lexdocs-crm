@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, X, Send, Paperclip, FileText, Image as ImageIcon, Copy, Check, RotateCcw } from "lucide-react";
+import { Sparkles, X, Send, Paperclip, FileText, FileSpreadsheet, Image as ImageIcon, Copy, Check, RotateCcw } from "lucide-react";
+import { ACEPTADOS, MAX_ADJUNTOS, MAX_BYTES_ADJUNTOS, prepararAdjunto } from "../lib/adjuntos";
 import { C, font } from "../constants";
 import { supabase } from "../lib/supabase";
 
@@ -48,21 +49,13 @@ function matchDemoResponse(text, firstName) {
 // por el rol en BD (esto solo adapta la pantalla).
 const ROLES_DESPACHO = ["admin", "owner", "lawyer", "staff", "procurador", "sales"];
 
-// Adjuntos: fotos y PDF que Claude lee directamente. No se guardan en ningún sitio.
+// Adjuntos (ver src/lib/adjuntos.js): no se guardan en ningún sitio.
 // Nivel usuario: viajan solo con su mensaje. Nivel despacho: siguen disponibles
 // durante la conversación (hasta 6 MB en total) para trabajar sobre ellos.
-const TIPOS_ADJUNTO = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
-const MAX_ADJUNTOS = 3;
-const MAX_BYTES_ADJUNTOS = 6 * 1024 * 1024;
-
-function leerComoBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+const IconoAdjunto = ({ a, size = 12, color }) =>
+  a.tipo?.startsWith("image/") ? <ImageIcon size={size} color={color} />
+    : a.origen === "hoja" ? <FileSpreadsheet size={size} color={color} />
+      : <FileText size={size} color={color} />;
 
 const MODULE_SUBTITLES = {
   lexdocs: "Asistente Documental",
@@ -83,7 +76,7 @@ const CHIPS = {
 
 const BIENVENIDA = {
   usuario: (n) => `Hola ${n}! Soy Carlota, tu asistente legal de LibreApp.\n\nPuedo ayudarte con:\n\n* Dudas sobre tu expediente\n* Documentacion necesaria\n* Plazos legales\n* Busqueda de jurisprudencia\n\nEn que puedo ayudarte?`,
-  despacho: (n) => `Hola ${n}, soy Carlota, la asistente jurídica del despacho.\n\nPuedo ayudarte a:\n\n* Leer e interpretar documentos (adjunta fotos o PDF con el clip)\n* Analizar la situación de un deudor y sus riesgos\n* Redactar borradores: solicitudes, demandas, planes de pagos, escritos e informes\n* Encontrar el fundamento legal de un punto\n\n¿Con qué empezamos?`,
+  despacho: (n) => `Hola ${n}, soy Carlota, la asistente jurídica del despacho.\n\nPuedo ayudarte a:\n\n* Leer e interpretar documentos: PDF, Word, Excel, CSV o fotos (con el clip)\n* Analizar la situación de un deudor y sus riesgos\n* Redactar borradores: solicitudes, demandas, planes de pagos, escritos e informes\n* Encontrar el fundamento legal de un punto\n\n¿Con qué empezamos?`,
 };
 
 // modo "flotante": burbuja abajo a la derecha. modo "pagina": ocupa el contenido
@@ -153,7 +146,6 @@ export default function Carlota({ user, currentModule = "general", currentContex
     const nuevos = [];
     let total = bytesEnConversacion + adjuntos.reduce((n, a) => n + a.tamano, 0);
     for (const f of files) {
-      if (!TIPOS_ADJUNTO.includes(f.type)) { setAvisoAdjunto(`"${f.name}": solo fotos (JPG, PNG, GIF, WebP) o PDF.`); continue; }
       if (adjuntos.length + nuevos.length >= MAX_ADJUNTOS) { setAvisoAdjunto(`Máximo ${MAX_ADJUNTOS} archivos por mensaje.`); break; }
       if (total + f.size > MAX_BYTES_ADJUNTOS) {
         setAvisoAdjunto(nivel === "despacho" && bytesEnConversacion
@@ -161,8 +153,10 @@ export default function Carlota({ user, currentModule = "general", currentContex
           : "Los archivos no pueden pasar de 6 MB en total.");
         break;
       }
+      const r = await prepararAdjunto(f);
+      if (!r.ok) { setAvisoAdjunto(r.error); continue; }
       total += f.size;
-      nuevos.push({ nombre: f.name, tipo: f.type, tamano: f.size, datos: await leerComoBase64(f) });
+      nuevos.push(r.adjunto);
     }
     if (nuevos.length) setAdjuntos(prev => [...prev, ...nuevos]);
   }
@@ -194,7 +188,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
     const userMsg = {
       role: "user",
       content: msg,
-      adjuntos: enviados.map(a => nivel === "despacho" ? a : { nombre: a.nombre, tipo: a.tipo }),
+      adjuntos: enviados.map(a => nivel === "despacho" ? a : { nombre: a.nombre, tipo: a.tipo, origen: a.origen }),
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -208,13 +202,13 @@ export default function Carlota({ user, currentModule = "general", currentContex
       // se llama a api.anthropic.com desde el navegador para no exponer la clave.
       try {
         const aApi = (m) => nivel === "despacho"
-          ? { role: m.role, content: m.content, adjuntos: (m.adjuntos || []).filter(a => a.datos).map(a => ({ nombre: a.nombre, tipo: a.tipo, datos: a.datos })) }
+          ? { role: m.role, content: m.content, adjuntos: (m.adjuntos || []).filter(a => a.datos || a.texto).map(a => ({ nombre: a.nombre, tipo: a.tipo, datos: a.datos, texto: a.texto })) }
           : { role: m.role, content: m.adjuntos?.length ? `${m.content}\n[Adjuntó: ${m.adjuntos.map(a => a.nombre).join(", ")}]` : m.content };
         const apiMessages = messages
           .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.bienvenida)
           .slice(nivel === "despacho" ? -19 : -10)
           .map(aApi)
-          .concat([{ role: 'user', content: msg, adjuntos: enviados.map(a => ({ nombre: a.nombre, tipo: a.tipo, datos: a.datos })) }]);
+          .concat([{ role: 'user', content: msg, adjuntos: enviados.map(a => ({ nombre: a.nombre, tipo: a.tipo, datos: a.datos, texto: a.texto })) }]);
 
         const { data: { session } } = await supabase.auth.getSession();
         const accessToken = session?.access_token;
@@ -523,7 +517,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
                       <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
                         {m.adjuntos.map((a, j) => (
                           <span key={j} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, opacity: .9 }}>
-                            {a.tipo === "application/pdf" ? <FileText size={12} /> : <ImageIcon size={12} />} {a.nombre}
+                            <IconoAdjunto a={a} /> {a.nombre}
                           </span>
                         ))}
                       </div>
@@ -634,7 +628,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 7 }}>
                 {adjuntos.map((a, i) => (
                   <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}`, fontSize: 11, color: C.text, maxWidth: "100%" }}>
-                    {a.tipo === "application/pdf" ? <FileText size={12} color={C.primary} /> : <ImageIcon size={12} color={C.primary} />}
+                    <IconoAdjunto a={a} color={C.primary} />
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{a.nombre}</span>
                     <button onClick={() => setAdjuntos(prev => prev.filter((_, j) => j !== i))} aria-label={`Quitar ${a.nombre}`} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, color: C.textMuted, display: "flex" }}><X size={12} /></button>
                   </span>
@@ -642,7 +636,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
                 {avisoAdjunto && <span style={{ fontSize: 11, color: C.red }}>{avisoAdjunto}</span>}
               </div>
             )}
-            <input ref={fileRef} id={enPagina ? "carlota-adjuntos-pagina" : "carlota-adjuntos"} type="file" accept={TIPOS_ADJUNTO.join(",")} multiple onChange={elegirArchivos} style={{ display: "none" }} />
+            <input ref={fileRef} id={enPagina ? "carlota-adjuntos-pagina" : "carlota-adjuntos"} type="file" accept={ACEPTADOS} multiple onChange={elegirArchivos} style={{ display: "none" }} />
             <div style={{
               display: "flex",
               gap: 8,
@@ -656,8 +650,8 @@ export default function Carlota({ user, currentModule = "general", currentContex
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={isTyping || adjuntos.length >= MAX_ADJUNTOS}
-                aria-label="Adjuntar foto o PDF"
-                title="Adjuntar foto o PDF"
+                aria-label="Adjuntar archivo"
+                title="Adjuntar PDF, Word, Excel, CSV o fotos"
                 style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: "transparent", color: C.textMuted, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}
               >
                 <Paperclip size={16} />

@@ -18,12 +18,17 @@ const MAX_TEXTO_CHARS = 400_000;       // los borradores largos del despacho via
 const MAX_ADJUNTOS = 3;                // por mensaje
 const MAX_ADJUNTOS_CONVERSACION = 10;  // nivel despacho: los documentos siguen disponibles en la conversación
 const TIPOS_IMAGEN = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
-type Adjunto = { nombre?: string; tipo: string; datos: string };
+// Fotos y PDF llegan en base64 (datos); Word, Excel, CSV y TXT llegan ya
+// convertidos a texto en el navegador (tipo "text/plain", texto).
+type Adjunto = { nombre?: string; tipo: string; datos?: string; texto?: string };
+const MAX_CARACTERES_ADJUNTO_TEXTO = 200_000;
 type MensajeEntrada = { role: "user" | "assistant"; content: string; adjuntos?: Adjunto[] };
 
 const adjuntoValido = (a: Adjunto) =>
-  ((TIPOS_IMAGEN as readonly string[]).includes(a?.tipo) || a?.tipo === "application/pdf")
-  && typeof a?.datos === "string" && a.datos.length > 0;
+  a?.tipo === "text/plain"
+    ? typeof a.texto === "string" && a.texto.trim().length > 0 && a.texto.length <= MAX_CARACTERES_ADJUNTO_TEXTO
+    : ((TIPOS_IMAGEN as readonly string[]).includes(a?.tipo) || a?.tipo === "application/pdf")
+      && typeof a?.datos === "string" && a.datos.length > 0;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,7 +70,7 @@ function buildPromptDespacho(firstName: string, userRole: string): string {
   return `Eres Carlota, la asistente jurídica de IA del despacho en LibreApp, especializada en Ley de Segunda Oportunidad y concurso de acreedores (TRLC). Trabajas para profesionales del despacho, no para clientes: ahora hablas con ${firstName}, ${ROL_LEGIBLE[userRole] || "profesional del despacho"}.
 
 QUÉ HACES
-- Lees e interpretas documentos (contratos, escrituras, nóminas, IRPF, certificados de AEAT y TGSS, CIRBE, extractos bancarios, resoluciones judiciales) y extraes lo relevante para el expediente.
+- Lees e interpretas documentos (contratos, escrituras, nóminas, IRPF, certificados de AEAT y TGSS, CIRBE, extractos bancarios, resoluciones judiciales) y extraes lo relevante para el expediente. Los PDF y las fotos los ves tal cual; los Word y Excel te llegan convertidos a texto, y cada hoja de cálculo como CSV tras "## Hoja: nombre" (úsalo para sumar deudas, ingresos o movimientos).
 - Analizas la situación del deudor: masa activa y pasiva, créditos exonerables y no exonerables, requisitos de buena fe y del BEPI, riesgos y alternativas, con tu valoración profesional razonada.
 - Redactas borradores: solicitudes de concurso de persona física, solicitudes de exoneración, propuestas de plan de pagos, demandas, escritos de trámite, requerimientos, burofaxes, informes al cliente y resúmenes de expediente.
 
@@ -130,7 +135,7 @@ PROHIBICIONES:
 - Nunca calculas plazos procesales exactos para un caso concreto (solo plazos gen\u00e9ricos de la ley).
 - Nunca interpretas documentos concretos del expediente (eso lo hace el abogado).
 
-ARCHIVOS ADJUNTOS (fotos o PDF que te env\u00eda el usuario):
+ARCHIVOS ADJUNTOS (fotos, PDF, Word, Excel o CSV que te env\u00eda el usuario; los Word y Excel te llegan convertidos a texto y cada hoja de c\u00e1lculo como CSV tras "## Hoja: nombre"):
 - Puedes decir qu\u00e9 tipo de documento parece, si corresponde a la documentaci\u00f3n que se suele pedir en LSO o concurso, si se lee bien y si parece incompleto (p. ej. faltan p\u00e1ginas o una cara del DNI).
 - No lo interpretas jur\u00eddicamente ni sacas conclusiones para su caso (ver PROHIBICIONES): para eso, deriva al abogado.
 - No repites datos personales del documento (n\u00fameros de DNI, cuentas, importes) salvo que el usuario lo pida expresamente.
@@ -280,9 +285,11 @@ serve(async (req: Request) => {
     const conversacion = historial.map((m, i) => {
       if (!(m.adjuntos || []).length) return { role: m.role, content: m.content };
       // deno-lint-ignore no-explicit-any
-      const bloques: any[] = (m.adjuntos || []).map((a) => a.tipo === "application/pdf"
-        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.datos }, title: (a.nombre || "documento.pdf").slice(0, 200) }
-        : { type: "image", source: { type: "base64", media_type: a.tipo as typeof TIPOS_IMAGEN[number], data: a.datos } });
+      const bloques: any[] = (m.adjuntos || []).map((a) => a.tipo === "text/plain"
+        ? { type: "document", source: { type: "text", media_type: "text/plain", data: a.texto }, title: (a.nombre || "documento").slice(0, 200) }
+        : a.tipo === "application/pdf"
+          ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.datos }, title: (a.nombre || "documento.pdf").slice(0, 200) }
+          : { type: "image", source: { type: "base64", media_type: a.tipo as typeof TIPOS_IMAGEN[number], data: a.datos } });
       if (i === idxUltimoConAdjuntos) bloques[bloques.length - 1].cache_control = { type: "ephemeral" };
       return { role: m.role, content: [...bloques, { type: "text", text: m.content || "Te envío este archivo." }] };
     });
