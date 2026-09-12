@@ -14,16 +14,81 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // Tamaño máximo de la petición (la conversación se recorta a 10 mensajes al llamar a Claude).
 // Con adjuntos: hasta 3 fotos/PDF y 6 MB (≈ 8,4 M caracteres en base64).
 const MAX_BODY_CHARS = 9_000_000;
-const MAX_TEXTO_CHARS = 200_000;
-const MAX_ADJUNTOS = 3;
+const MAX_TEXTO_CHARS = 400_000;       // los borradores largos del despacho viajan en el historial
+const MAX_ADJUNTOS = 3;                // por mensaje
+const MAX_ADJUNTOS_CONVERSACION = 10;  // nivel despacho: los documentos siguen disponibles en la conversación
 const TIPOS_IMAGEN = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 type Adjunto = { nombre?: string; tipo: string; datos: string };
+type MensajeEntrada = { role: "user" | "assistant"; content: string; adjuntos?: Adjunto[] };
+
+const adjuntoValido = (a: Adjunto) =>
+  ((TIPOS_IMAGEN as readonly string[]).includes(a?.tipo) || a?.tipo === "application/pdf")
+  && typeof a?.datos === "string" && a.datos.length > 0;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+// Legislación y jurisprudencia verificadas: las únicas referencias que Carlota
+// puede citar sin marcarlas como "a verificar" (en los dos niveles)
+const FUENTES_VERIFICADAS = `LEGISLACI\u00d3N ESPA\u00d1OLA DE REFERENCIA (base verificada):
+- TRLC \u2014 Real Decreto Legislativo 1/2020, de 5 de mayo (BOE 07/05/2020)
+- Ley 16/2022, de 5 de septiembre (BOE 06/09/2022): reforma TRLC, transpone Directiva UE 2019/1023
+- Arts. 486-502 TRLC: R\u00e9gimen del BEPI (Beneficio de Exoneraci\u00f3n del Pasivo Insatisfecho)
+- Art. 178 bis LC (derogado, aplicable solo a concursos anteriores a 26/09/2022)
+- RDL 1/2015, de 27 de febrero (BOE 28/02/2015): primera regulaci\u00f3n segunda oportunidad
+- LEC \u2014 Ley 1/2000 de Enjuiciamiento Civil
+- LO 1/2020 + RGPD \u2014 protecci\u00f3n de datos
+
+JURISPRUDENCIA VERIFICADA (solo cita estas si es exacto):
+- STS 381/2019, de 2 de julio (Sala 1\u00aa): buena fe del deudor para BEPI
+- STS 56/2020, de 27 de enero (Sala 1\u00aa): BEPI y cr\u00e9dito p\u00fablico (AEAT/TGSS)
+- STS 232/2022, de 22 de marzo (Sala 1\u00aa): plan de pagos en concurso consecutivo
+- STS 589/2023, de 19 de abril (Sala 1\u00aa): BEPI y deuda hipotecaria
+- STJUE C-869/19, Caso Uni\u00f3n de Cr\u00e9ditos Inmobiliarios: plazos exoneraci\u00f3n
+- Si citas alguna fuera de esta lista y no est\u00e1s 100% segura de que exista con esa referencia exacta, NO LA CITES. Di "existe jurisprudencia consolidada, tu abogado te dar\u00e1 referencias actualizadas".`;
+
+// Roles del despacho: reciben Carlota nivel despacho (lo decide la BD, nunca el navegador)
+const ROLES_DESPACHO = ["admin", "owner", "lawyer", "staff", "procurador", "sales"];
+
+const ROL_LEGIBLE: Record<string, string> = {
+  admin: "administrador del despacho", owner: "titular del despacho", lawyer: "letrado",
+  staff: "miembro del equipo", procurador: "procurador", sales: "equipo comercial",
+};
+
+// Nivel despacho: ayuda profesional para leer e interpretar documentos y redactar
+// borradores. Mantiene los guardarraíles de CLAUDE.md regla 4: cita fuentes, no
+// inventa jurisprudencia y todo escrito es un borrador para el letrado.
+function buildPromptDespacho(firstName: string, userRole: string): string {
+  return `Eres Carlota, la asistente jurídica de IA del despacho en LibreApp, especializada en Ley de Segunda Oportunidad y concurso de acreedores (TRLC). Trabajas para profesionales del despacho, no para clientes: ahora hablas con ${firstName}, ${ROL_LEGIBLE[userRole] || "profesional del despacho"}.
+
+QUÉ HACES
+- Lees e interpretas documentos (contratos, escrituras, nóminas, IRPF, certificados de AEAT y TGSS, CIRBE, extractos bancarios, resoluciones judiciales) y extraes lo relevante para el expediente.
+- Analizas la situación del deudor: masa activa y pasiva, créditos exonerables y no exonerables, requisitos de buena fe y del BEPI, riesgos y alternativas, con tu valoración profesional razonada.
+- Redactas borradores: solicitudes de concurso de persona física, solicitudes de exoneración, propuestas de plan de pagos, demandas, escritos de trámite, requerimientos, burofaxes, informes al cliente y resúmenes de expediente.
+
+CÓMO REDACTAS ESCRITOS
+- Estructura forense española: encabezamiento dirigido al juzgado competente, identificación de partes y representación (procurador y letrado), HECHOS numerados, FUNDAMENTOS DE DERECHO (jurisdiccionales, procesales y de fondo), SUPLICO y OTROSÍ cuando proceda.
+- Los datos que no tengas los dejas como [●] con una indicación breve, por ejemplo [● fecha de la escritura]. Nunca inventas hechos, cifras, nombres ni fechas.
+- Empiezas cada escrito con la línea: "BORRADOR generado con IA: revisar y validar por el letrado antes de presentarlo."
+- La extensión es la que el escrito necesita: completo en lo sustancial, sin secciones de relleno ni resúmenes repetidos.
+
+FUENTES Y CERTEZA (sin excepciones)
+- Cada fundamento lleva su fuente exacta: artículo y norma, o sentencia con tribunal, sala, número y fecha.
+- NUNCA inventas sentencias, números de recurso, ponentes, fechas ni artículos. Citas jurisprudencia de la lista verificada o que conozcas con total seguridad; si no, escribes [● jurisprudencia a verificar en CENDOJ o LexConsulta].
+- Si un punto es discutido o depende del criterio del juzgado, lo dices y explicas las posturas.
+- Ámbito: derecho español vigente (estatal y autonómico), jurisprudencia publicada en CENDOJ y del TJUE vinculante. Avisas cuando una norma ha sido reformada (por ejemplo, por la Ley 16/2022).
+
+${FUENTES_VERIFICADAS}
+
+TRATO
+- Técnica y directa, en español de España. En conversación, respuestas centradas y breves; en escritos y análisis que te pidan, completos.
+- Haces lo que te piden con el alcance que se pretende: resuelves tú las dudas menores y preguntas solo si la respuesta cambiaría el trabajo de forma importante. Si falta un dato, sigues con [●] en lugar de detenerte.
+- Los datos personales de los documentos los usas para el trabajo pedido; no los repites sin necesidad.
+- Tu trabajo es de apoyo: la decisión, la firma y la responsabilidad son del letrado.`;
+}
 
 function buildSystemPrompt(firstName: string, userRole: string, module: string, context: any): string {
   // Contexto territorial (si se pasa)
@@ -72,22 +137,7 @@ ARCHIVOS ADJUNTOS (fotos o PDF que te env\u00eda el usuario):
 - Nunca hablas sobre otras jurisdicciones ni derecho comparado salvo TJUE vinculante.
 - Nunca tomas decisiones por el cliente (ej. "firma esto", "rechaza la oferta"). Derivas al abogado.
 
-LEGISLACI\u00d3N ESPA\u00d1OLA DE REFERENCIA (base verificada):
-- TRLC \u2014 Real Decreto Legislativo 1/2020, de 5 de mayo (BOE 07/05/2020)
-- Ley 16/2022, de 5 de septiembre (BOE 06/09/2022): reforma TRLC, transpone Directiva UE 2019/1023
-- Arts. 486-502 TRLC: R\u00e9gimen del BEPI (Beneficio de Exoneraci\u00f3n del Pasivo Insatisfecho)
-- Art. 178 bis LC (derogado, aplicable solo a concursos anteriores a 26/09/2022)
-- RDL 1/2015, de 27 de febrero (BOE 28/02/2015): primera regulaci\u00f3n segunda oportunidad
-- LEC \u2014 Ley 1/2000 de Enjuiciamiento Civil
-- LO 1/2020 + RGPD \u2014 protecci\u00f3n de datos
-
-JURISPRUDENCIA VERIFICADA (solo cita estas si es exacto):
-- STS 381/2019, de 2 de julio (Sala 1\u00aa): buena fe del deudor para BEPI
-- STS 56/2020, de 27 de enero (Sala 1\u00aa): BEPI y cr\u00e9dito p\u00fablico (AEAT/TGSS)
-- STS 232/2022, de 22 de marzo (Sala 1\u00aa): plan de pagos en concurso consecutivo
-- STS 589/2023, de 19 de abril (Sala 1\u00aa): BEPI y deuda hipotecaria
-- STJUE C-869/19, Caso Uni\u00f3n de Cr\u00e9ditos Inmobiliarios: plazos exoneraci\u00f3n
-- Si citas alguna fuera de esta lista y no est\u00e1s 100% segura de que exista con esa referencia exacta, NO LA CITES. Di "existe jurisprudencia consolidada, tu abogado te dar\u00e1 referencias actualizadas".
+${FUENTES_VERIFICADAS}
 
 DOCUMENTACI\u00d3N LSO (30 documentos en 7 categor\u00edas):
 1. Datos personales: DNI/NIE, libro familia, empadronamiento, antecedentes penales
@@ -179,17 +229,27 @@ serve(async (req: Request) => {
     }
     const { messages, adjuntos = [], currentModule, currentContext } = JSON.parse(raw);
     if (!Array.isArray(messages) || messages.length === 0) throw new Error("messages required");
-    const soloTexto = JSON.stringify(messages).length;
-    const adjuntosValidos = Array.isArray(adjuntos)
-      && adjuntos.length <= MAX_ADJUNTOS
-      && adjuntos.every((a: Adjunto) =>
-        (TIPOS_IMAGEN as readonly string[]).includes(a?.tipo) || a?.tipo === "application/pdf")
-      && adjuntos.every((a: Adjunto) => typeof a?.datos === "string" && a.datos.length > 0);
-    if (soloTexto > MAX_TEXTO_CHARS || !adjuntosValidos) {
-      return new Response(JSON.stringify({ success: false, code: "demasiado_grande", error: "El mensaje es demasiado largo o el archivo no es una foto o un PDF válido." }), {
+    const nivel = staffRow && ROLES_DESPACHO.includes(realRole) ? "despacho" : "usuario";
+
+    // Nivel usuario: 10 mensajes y adjuntos solo en el último. Nivel despacho: 20
+    // mensajes y los documentos siguen disponibles durante la conversación.
+    const historial: MensajeEntrada[] = messages.slice(nivel === "despacho" ? -20 : -10)
+      .map((m: MensajeEntrada) => ({ role: m.role, content: String(m.content ?? ""), adjuntos: Array.isArray(m.adjuntos) ? m.adjuntos : [] }));
+    const ultimo = historial[historial.length - 1];
+    if (Array.isArray(adjuntos) && adjuntos.length) ultimo.adjuntos = adjuntos; // formato anterior del frontend
+    if (nivel === "usuario") historial.forEach((m, i) => { if (i < historial.length - 1) m.adjuntos = []; });
+
+    const textoTotal = historial.reduce((n, m) => n + m.content.length, 0);
+    const todosAdjuntos = historial.flatMap((m) => m.adjuntos || []);
+    const adjuntosValidos = historial.every((m) => (m.adjuntos || []).length <= MAX_ADJUNTOS)
+      && todosAdjuntos.length <= MAX_ADJUNTOS_CONVERSACION
+      && todosAdjuntos.every(adjuntoValido);
+    if (textoTotal > MAX_TEXTO_CHARS || !adjuntosValidos) {
+      return new Response(JSON.stringify({ success: false, code: "demasiado_grande", error: "El mensaje es demasiado largo o algún archivo no es una foto o un PDF válido. Prueba a empezar una conversación nueva." }), {
         status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const adjuntosNuevos = (ultimo.adjuntos || []).length; // solo cuentan para el límite los que llegan ahora
 
     // Límite de uso (antes de gastar en Anthropic). El diario por usuario sale del plan del despacho.
     let porDia = LIMITES.carlota.porDia;
@@ -204,7 +264,7 @@ serve(async (req: Request) => {
     const uso = await consumirUso(supabaseAdmin, "carlota", user.id, orgId, { ...LIMITES.carlota, porDia });
     // Leer un PDF o una foto cuesta mucho más que una pregunta: cada adjunto cuenta aparte
     let usoAdjuntos = uso;
-    for (let i = 0; usoAdjuntos.ok && i < adjuntos.length; i++) {
+    for (let i = 0; usoAdjuntos.ok && i < adjuntosNuevos; i++) {
       usoAdjuntos = await consumirUso(supabaseAdmin, "carlota-adjuntos", user.id, orgId, LIMITES["carlota-adjuntos"]);
     }
     const bloqueo = !uso.ok ? uso : !usoAdjuntos.ok ? usoAdjuntos : null;
@@ -214,26 +274,30 @@ serve(async (req: Request) => {
       });
     }
 
-    // Los adjuntos van en el último mensaje del usuario, antes de su texto
-    const conversacion = messages.slice(-10);
-    if (adjuntos.length) {
-      const ultimo = conversacion[conversacion.length - 1];
-      ultimo.content = [
-        ...adjuntos.map((a: Adjunto) => a.tipo === "application/pdf"
-          ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.datos }, title: (a.nombre || "documento.pdf").slice(0, 200) }
-          : { type: "image", source: { type: "base64", media_type: a.tipo as typeof TIPOS_IMAGEN[number], data: a.datos } }),
-        { type: "text", text: String(ultimo.content || "") },
-      ];
-    }
+    // Cada adjunto va delante del texto de su mensaje. La caché de Anthropic se
+    // marca tras el último documento: releerlo en las respuestas siguientes cuesta ~0,1×.
+    const idxUltimoConAdjuntos = historial.map((m) => (m.adjuntos || []).length > 0).lastIndexOf(true);
+    const conversacion = historial.map((m, i) => {
+      if (!(m.adjuntos || []).length) return { role: m.role, content: m.content };
+      // deno-lint-ignore no-explicit-any
+      const bloques: any[] = (m.adjuntos || []).map((a) => a.tipo === "application/pdf"
+        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.datos }, title: (a.nombre || "documento.pdf").slice(0, 200) }
+        : { type: "image", source: { type: "base64", media_type: a.tipo as typeof TIPOS_IMAGEN[number], data: a.datos } });
+      if (i === idxUltimoConAdjuntos) bloques[bloques.length - 1].cache_control = { type: "ephemeral" };
+      return { role: m.role, content: [...bloques, { type: "text", text: m.content || "Te envío este archivo." }] };
+    });
 
-    const systemPrompt = buildSystemPrompt(realFirstName, realRole, currentModule || "general", currentContext || {});
+    const systemPrompt = nivel === "despacho"
+      ? buildPromptDespacho(realFirstName, realRole)
+      : buildSystemPrompt(realFirstName, realRole, currentModule || "general", currentContext || {});
 
     // Opus 5 piensa por defecto: max_tokens cubre razonamiento + respuesta
     const response = await anthropic.beta.messages.create({
       model: MODELO_IA,
       max_tokens: 16000,
-      output_config: { effort: "medium" },
-      system: systemPrompt,
+      // Despacho: más esfuerzo (interpretar y redactar); usuario: respuestas rápidas
+      output_config: { effort: nivel === "despacho" ? "high" : "medium" },
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
       messages: conversacion,
       ...REINTENTO_ANTE_RECHAZO,
     });
@@ -243,7 +307,7 @@ serve(async (req: Request) => {
       : textoDe(response) || "Disculpa, no he podido procesar tu pregunta.";
 
     return new Response(
-      JSON.stringify({ success: true, reply }),
+      JSON.stringify({ success: true, reply, nivel }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {

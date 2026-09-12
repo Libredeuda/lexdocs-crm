@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, X, Send, Paperclip, FileText, Image as ImageIcon } from "lucide-react";
+import { Sparkles, X, Send, Paperclip, FileText, Image as ImageIcon, Copy, Check, RotateCcw } from "lucide-react";
 import { C, font } from "../constants";
 import { supabase } from "../lib/supabase";
 
@@ -11,7 +11,11 @@ const DEMO_RESPONSES = {
   jurisprudence: "Para busqueda de jurisprudencia sobre LSO, las sentencias mas relevantes son:\n\n* **STS 381/2019** (Sala 1a) -- Sobre la buena fe del deudor\n* **STS 56/2020** -- Extension BEPI a credito publico\n* **STJUE C-869/19** -- Plazos de exoneracion (caso Liku/Sabiedriba)\n\nCuando el modulo LexConsulta este activo, podre buscar en la base de datos completa de CENDOJ.",
 };
 
-const DISCLAIMER = "\n\nInformacion orientativa. No constituye asesoramiento legal vinculante.";
+// Aviso al pie de cada respuesta, según el nivel
+const DISCLAIMER = {
+  usuario: "\n\nInformacion orientativa. No constituye asesoramiento legal vinculante.",
+  despacho: "\n\nApoyo generado con IA: revísalo y valídalo antes de usarlo.",
+};
 
 const GREETINGS = [
   (name) => `Hola ${name}! Soy Carlota, tu asistente legal de LibreApp. `,
@@ -37,11 +41,16 @@ function matchDemoResponse(text, firstName) {
     response = DEMO_RESPONSES.default;
   }
   const useGreeting = Math.random() > 0.4;
-  return (useGreeting ? getGreeting(firstName) : "") + response + DISCLAIMER;
+  return (useGreeting ? getGreeting(firstName) : "") + response + DISCLAIMER.usuario;
 }
 
-// Adjuntos: fotos y PDF que Claude lee directamente. No se guardan: viajan solo
-// con el mensaje en que se adjuntan (en el historial queda una nota con el nombre).
+// Nivel despacho para los roles del despacho; el servidor lo vuelve a decidir
+// por el rol en BD (esto solo adapta la pantalla).
+const ROLES_DESPACHO = ["admin", "owner", "lawyer", "staff", "procurador", "sales"];
+
+// Adjuntos: fotos y PDF que Claude lee directamente. No se guardan en ningún sitio.
+// Nivel usuario: viajan solo con su mensaje. Nivel despacho: siguen disponibles
+// durante la conversación (hasta 6 MB en total) para trabajar sobre ellos.
 const TIPOS_ADJUNTO = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
 const MAX_ADJUNTOS = 3;
 const MAX_BYTES_ADJUNTOS = 6 * 1024 * 1024;
@@ -62,43 +71,47 @@ const MODULE_SUBTITLES = {
   general: "Asistente Legal IA",
 };
 
-const QUICK_CHIPS_CLIENT = [
-  "Que documentos me faltan?",
-  "Cual es mi proximo plazo?",
-  "Como consigo el CIRBE?",
-];
+const CHIPS = {
+  usuario: ["Que documentos me faltan?", "Cual es mi proximo plazo?", "Como consigo el CIRBE?"],
+  despacho: [
+    "Resume este documento y señala lo relevante",
+    "Redacta una solicitud de concurso de persona física",
+    "Prepara una propuesta de plan de pagos",
+    "¿Qué deudas no son exonerables en el BEPI?",
+  ],
+};
 
-const QUICK_CHIPS_ADMIN = [
-  "Buscar jurisprudencia LSO",
-  "Redactar resumen caso",
-  "Casos similares",
-];
+const BIENVENIDA = {
+  usuario: (n) => `Hola ${n}! Soy Carlota, tu asistente legal de LibreApp.\n\nPuedo ayudarte con:\n\n* Dudas sobre tu expediente\n* Documentacion necesaria\n* Plazos legales\n* Busqueda de jurisprudencia\n\nEn que puedo ayudarte?`,
+  despacho: (n) => `Hola ${n}, soy Carlota, la asistente jurídica del despacho.\n\nPuedo ayudarte a:\n\n* Leer e interpretar documentos (adjunta fotos o PDF con el clip)\n* Analizar la situación de un deudor y sus riesgos\n* Redactar borradores: solicitudes, demandas, planes de pagos, escritos e informes\n* Encontrar el fundamento legal de un punto\n\n¿Con qué empezamos?`,
+};
 
-export default function Carlota({ user, currentModule = "general", currentContext = {} }) {
-  const [isOpen, setIsOpen] = useState(false);
+// modo "flotante": burbuja abajo a la derecha. modo "pagina": ocupa el contenido
+// (sección "Asistente IA Legal" del panel del despacho).
+export default function Carlota({ user, currentModule = "general", currentContext = {}, modo = "flotante" }) {
+  const enPagina = modo === "pagina";
+  const [isOpen, setIsOpen] = useState(enPagina);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [hasPulse, setHasPulse] = useState(true);
   const [adjuntos, setAdjuntos] = useState([]); // { nombre, tipo, tamano, datos(base64) }
   const [avisoAdjunto, setAvisoAdjunto] = useState("");
+  const [copiado, setCopiado] = useState(null);
   const endRef = useRef(null);
   const textareaRef = useRef(null);
   const fileRef = useRef(null);
 
   const firstName = (user?.full_name || user?.name || "").split(" ")[0] || "usuario";
   const role = user?.role || "client";
-  const subtitle = MODULE_SUBTITLES[currentModule] || MODULE_SUBTITLES.general;
-  const chips = role === "client" ? QUICK_CHIPS_CLIENT : QUICK_CHIPS_ADMIN;
+  const nivel = ROLES_DESPACHO.includes(role) ? "despacho" : "usuario";
+  const subtitle = nivel === "despacho" ? "Asistente jurídica del despacho" : (MODULE_SUBTITLES[currentModule] || MODULE_SUBTITLES.general);
+  const chips = CHIPS[nivel];
 
-  // Welcome message on first open
+  // Mensaje de bienvenida al abrir
   useEffect(() => {
     if (isOpen && messages.length === 0) {
-      setMessages([{
-        role: "assistant",
-        content: `Hola ${firstName}! Soy Carlota, tu asistente legal de LibreApp.\n\nPuedo ayudarte con:\n\n* Dudas sobre tu expediente\n* Documentacion necesaria\n* Plazos legales\n* Busqueda de jurisprudencia\n\nEn que puedo ayudarte?${DISCLAIMER}`,
-        timestamp: Date.now(),
-      }]);
+      setMessages([{ role: "assistant", content: BIENVENIDA[nivel](firstName) + DISCLAIMER[nivel], timestamp: Date.now(), bienvenida: true }]);
     }
   }, [isOpen]);
 
@@ -112,8 +125,9 @@ export default function Carlota({ user, currentModule = "general", currentContex
     if (isOpen) setHasPulse(false);
   }, [isOpen]);
 
-  // Listen for global event to open Carlota (with optional initial message)
+  // Evento global para abrir la burbuja (con mensaje inicial opcional). La página no lo escucha.
   useEffect(() => {
+    if (enPagina) return;
     function handler(e) {
       setIsOpen(true);
       const initial = e?.detail?.message;
@@ -127,31 +141,62 @@ export default function Carlota({ user, currentModule = "general", currentContex
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Bytes de adjuntos que siguen en la conversación (solo nivel despacho los reenvía)
+  const bytesEnConversacion = nivel === "despacho"
+    ? messages.reduce((n, m) => n + (m.adjuntos || []).reduce((k, a) => k + (a.tamano || 0), 0), 0)
+    : 0;
+
   async function elegirArchivos(e) {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     setAvisoAdjunto("");
     const nuevos = [];
-    let total = adjuntos.reduce((n, a) => n + a.tamano, 0);
+    let total = bytesEnConversacion + adjuntos.reduce((n, a) => n + a.tamano, 0);
     for (const f of files) {
       if (!TIPOS_ADJUNTO.includes(f.type)) { setAvisoAdjunto(`"${f.name}": solo fotos (JPG, PNG, GIF, WebP) o PDF.`); continue; }
       if (adjuntos.length + nuevos.length >= MAX_ADJUNTOS) { setAvisoAdjunto(`Máximo ${MAX_ADJUNTOS} archivos por mensaje.`); break; }
-      if (total + f.size > MAX_BYTES_ADJUNTOS) { setAvisoAdjunto("Los archivos no pueden pasar de 6 MB en total."); break; }
+      if (total + f.size > MAX_BYTES_ADJUNTOS) {
+        setAvisoAdjunto(nivel === "despacho" && bytesEnConversacion
+          ? "Esta conversación ya tiene 6 MB de archivos: empieza una nueva para añadir más."
+          : "Los archivos no pueden pasar de 6 MB en total.");
+        break;
+      }
       total += f.size;
       nuevos.push({ nombre: f.name, tipo: f.type, tamano: f.size, datos: await leerComoBase64(f) });
     }
     if (nuevos.length) setAdjuntos(prev => [...prev, ...nuevos]);
   }
 
+  function nuevaConversacion() {
+    setAdjuntos([]);
+    setAvisoAdjunto("");
+    setInput("");
+    setMessages([{ role: "assistant", content: BIENVENIDA[nivel](firstName) + DISCLAIMER[nivel], timestamp: Date.now(), bienvenida: true }]);
+  }
+
+  async function copiar(texto, i) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(i);
+      setTimeout(() => setCopiado(null), 1800);
+    } catch { /* sin permiso de portapapeles */ }
+  }
+
   async function sendMessage(text) {
-    const enviados = text ? [] : adjuntos;
+    const enviados = adjuntos;
     const msg = (text || input).trim() || (enviados.length ? "Te envío este archivo." : "");
     if (!msg || isTyping) return;
     setInput("");
     setAdjuntos([]);
     setAvisoAdjunto("");
 
-    const userMsg = { role: "user", content: msg, adjuntos: enviados.map(a => ({ nombre: a.nombre, tipo: a.tipo })), timestamp: Date.now() };
+    // En nivel despacho se conservan los datos para reenviarlos en la conversación
+    const userMsg = {
+      role: "user",
+      content: msg,
+      adjuntos: enviados.map(a => nivel === "despacho" ? a : { nombre: a.nombre, tipo: a.tipo }),
+      timestamp: Date.now(),
+    };
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
@@ -162,15 +207,14 @@ export default function Carlota({ user, currentModule = "general", currentContex
       // La API key de Anthropic vive SOLO en el servidor (Edge Function). Nunca
       // se llama a api.anthropic.com desde el navegador para no exponer la clave.
       try {
-        // Historial solo en texto: los adjuntos anteriores quedan como nota
+        const aApi = (m) => nivel === "despacho"
+          ? { role: m.role, content: m.content, adjuntos: (m.adjuntos || []).filter(a => a.datos).map(a => ({ nombre: a.nombre, tipo: a.tipo, datos: a.datos })) }
+          : { role: m.role, content: m.adjuntos?.length ? `${m.content}\n[Adjuntó: ${m.adjuntos.map(a => a.nombre).join(", ")}]` : m.content };
         const apiMessages = messages
-          .filter(m => m.role === 'user' || m.role === 'assistant')
-          .slice(-10)
-          .map(m => ({
-            role: m.role,
-            content: m.adjuntos?.length ? `${m.content}\n[Adjuntó: ${m.adjuntos.map(a => a.nombre).join(", ")}]` : m.content,
-          }))
-          .concat([{ role: 'user', content: msg }]);
+          .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.bienvenida)
+          .slice(nivel === "despacho" ? -19 : -10)
+          .map(aApi)
+          .concat([{ role: 'user', content: msg, adjuntos: enviados.map(a => ({ nombre: a.nombre, tipo: a.tipo, datos: a.datos })) }]);
 
         const { data: { session } } = await supabase.auth.getSession();
         const accessToken = session?.access_token;
@@ -185,7 +229,6 @@ export default function Carlota({ user, currentModule = "general", currentContex
             },
             body: JSON.stringify({
               messages: apiMessages,
-              adjuntos: enviados.map(a => ({ nombre: a.nombre, tipo: a.tipo, datos: a.datos })),
               currentModule,
               currentContext,
             }),
@@ -202,7 +245,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
         }
 
         if (reply) {
-          setMessages(prev => [...prev, { role: 'assistant', content: reply + DISCLAIMER, timestamp: Date.now() }]);
+          setMessages(prev => [...prev, { role: 'assistant', content: reply + DISCLAIMER[nivel], timestamp: Date.now() }]);
         } else {
           // Sin sesión o sin respuesta del servidor → modo demo
           const demo = matchDemoResponse(msg, firstName);
@@ -280,6 +323,20 @@ export default function Carlota({ user, currentModule = "general", currentContex
     });
   }
 
+  const hayQueEnviar = input.trim() || adjuntos.length;
+
+  const panelStyle = enPagina
+    ? {
+      height: "calc(100vh - 150px)", minHeight: 460, borderRadius: 14, background: C.white,
+      border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: font,
+    }
+    : {
+      position: "fixed", bottom: 24, right: 24, width: 400, height: 520, maxHeight: "calc(100vh - 48px)",
+      borderRadius: 18, background: C.white, boxShadow: "0 12px 48px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.05)",
+      display: "flex", flexDirection: "column", overflow: "hidden", zIndex: 1001,
+      animation: "carlotaSlideUp .3s ease both", fontFamily: font,
+    };
+
   return (
     <>
       {/* ════ STYLES ════ */}
@@ -291,72 +348,65 @@ export default function Carlota({ user, currentModule = "general", currentContex
         @keyframes carlotaDot{0%,80%,100%{opacity:.3}40%{opacity:1}}
       `}</style>
 
-      {/* ════ FLOATING BUTTON ════ */}
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            background: `linear-gradient(135deg, ${C.primary}, ${C.violet})`,
-            border: "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 6px 24px rgba(91,107,240,.35)",
-            zIndex: 1000,
-            animation: hasPulse ? "carlotaPulse 2s ease infinite, carlotaBounce 2s ease infinite" : "none",
-            transition: "transform .2s",
-            fontFamily: font,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.08)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-        >
-          <Sparkles size={24} color="#fff" />
-          {/* Badge IA */}
-          <span style={{
-            position: "absolute",
-            top: -2,
-            right: -2,
-            background: C.teal,
-            color: "#fff",
-            fontSize: 8,
-            fontWeight: 700,
-            padding: "2px 5px",
-            borderRadius: 6,
-            letterSpacing: ".05em",
-            lineHeight: 1,
-            fontFamily: font,
-          }}>IA</span>
-        </button>
+      {/* ════ FLOATING BUTTON + CTA ════ */}
+      {!enPagina && !isOpen && (
+        <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 1000, display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => setIsOpen(true)}
+            className="carlota-cta"
+            style={{
+              padding: "9px 14px", borderRadius: 20, background: C.white, color: C.primary,
+              border: `1px solid ${C.primary}30`, boxShadow: "0 4px 16px rgba(0,0,0,.10)",
+              fontSize: 12.5, fontWeight: 600, fontFamily: font, cursor: "pointer", whiteSpace: "nowrap",
+            }}
+          >
+            Pregúntale a la IA
+          </button>
+          <button
+            onClick={() => setIsOpen(true)}
+            aria-label="Abrir Carlota, asistente IA"
+            style={{
+              position: "relative",
+              width: 56,
+              height: 56,
+              borderRadius: "50%",
+              background: `linear-gradient(135deg, ${C.primary}, ${C.violet})`,
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 6px 24px rgba(91,107,240,.35)",
+              animation: hasPulse ? "carlotaPulse 2s ease infinite, carlotaBounce 2s ease infinite" : "none",
+              transition: "transform .2s",
+              fontFamily: font,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.08)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+          >
+            <Sparkles size={24} color="#fff" />
+            {/* Badge IA */}
+            <span style={{
+              position: "absolute",
+              top: -2,
+              right: -2,
+              background: C.teal,
+              color: "#fff",
+              fontSize: 8,
+              fontWeight: 700,
+              padding: "2px 5px",
+              borderRadius: 6,
+              letterSpacing: ".05em",
+              lineHeight: 1,
+              fontFamily: font,
+            }}>IA</span>
+          </button>
+        </div>
       )}
 
       {/* ════ CHAT PANEL ════ */}
       {isOpen && (
-        <div style={{
-          position: "fixed",
-          bottom: 24,
-          right: 24,
-          width: 400,
-          height: 520,
-          maxHeight: "calc(100vh - 48px)",
-          borderRadius: 18,
-          background: C.white,
-          boxShadow: "0 12px 48px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.05)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          zIndex: 1001,
-          animation: "carlotaSlideUp .3s ease both",
-          fontFamily: font,
-        }}
-        className="carlota-panel"
-        >
+        <div style={panelStyle} className={enPagina ? undefined : "carlota-panel"}>
 
           {/* ──── HEADER ──── */}
           <div style={{
@@ -383,30 +433,44 @@ export default function Carlota({ user, currentModule = "general", currentContex
               <h3 style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: 0 }}>Carlota</h3>
               <p style={{ fontSize: 10.5, color: "rgba(255,255,255,.7)", margin: 0, marginTop: 1 }}>{subtitle}</p>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              style={{
-                background: "rgba(255,255,255,.15)",
-                border: "none",
-                borderRadius: 8,
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                color: "#fff",
-              }}
-            >
-              <X size={16} />
-            </button>
+            {messages.length > 1 && (
+              <button
+                onClick={nuevaConversacion}
+                disabled={isTyping}
+                title="Empezar una conversación nueva"
+                aria-label="Empezar una conversación nueva"
+                style={{ background: "rgba(255,255,255,.15)", border: "none", borderRadius: 8, height: 32, padding: "0 10px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", color: "#fff", fontSize: 11.5, fontWeight: 600, fontFamily: font }}
+              >
+                <RotateCcw size={14} /> {enPagina && "Nueva conversación"}
+              </button>
+            )}
+            {!enPagina && (
+              <button
+                onClick={() => setIsOpen(false)}
+                aria-label="Cerrar Carlota"
+                style={{
+                  background: "rgba(255,255,255,.15)",
+                  border: "none",
+                  borderRadius: 8,
+                  width: 32,
+                  height: 32,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: "#fff",
+                }}
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
 
           {/* ──── MESSAGES ──── */}
           <div style={{
             flex: 1,
             overflowY: "auto",
-            padding: "14px 14px 8px",
+            padding: enPagina ? "20px 24px 10px" : "14px 14px 8px",
             display: "flex",
             flexDirection: "column",
             gap: 10,
@@ -420,7 +484,6 @@ export default function Carlota({ user, currentModule = "general", currentContex
                   justifyContent: m.role === "user" ? "flex-end" : "flex-start",
                   gap: 8,
                   animation: "carlotaFadeIn .25s ease both",
-                  animationDelay: `${i * 0.04}s`,
                 }}
               >
                 {m.role === "assistant" && (
@@ -438,31 +501,42 @@ export default function Carlota({ user, currentModule = "general", currentContex
                     <Sparkles size={13} color="#fff" />
                   </div>
                 )}
-                <div style={{
-                  maxWidth: "78%",
-                  padding: "10px 14px",
-                  borderRadius: m.role === "user"
-                    ? "14px 14px 4px 14px"
-                    : "14px 14px 14px 4px",
-                  background: m.role === "user"
-                    ? `linear-gradient(135deg, ${C.primary}, ${C.violet})`
-                    : C.white,
-                  color: m.role === "user" ? "#fff" : C.text,
-                  fontSize: 12.5,
-                  lineHeight: 1.6,
-                  boxShadow: m.role === "user"
-                    ? "none"
-                    : "0 1px 4px rgba(0,0,0,.06)",
-                }}>
-                  {m.role === "user" ? m.content : renderContent(m.content)}
-                  {m.adjuntos?.length > 0 && (
-                    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
-                      {m.adjuntos.map((a, j) => (
-                        <span key={j} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, opacity: .9 }}>
-                          {a.tipo === "application/pdf" ? <FileText size={12} /> : <ImageIcon size={12} />} {a.nombre}
-                        </span>
-                      ))}
-                    </div>
+                <div style={{ maxWidth: enPagina ? "85%" : "78%", display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
+                  <div style={{
+                    padding: "10px 14px",
+                    borderRadius: m.role === "user"
+                      ? "14px 14px 4px 14px"
+                      : "14px 14px 14px 4px",
+                    background: m.role === "user"
+                      ? `linear-gradient(135deg, ${C.primary}, ${C.violet})`
+                      : C.white,
+                    color: m.role === "user" ? "#fff" : C.text,
+                    fontSize: enPagina ? 13.5 : 12.5,
+                    lineHeight: 1.6,
+                    boxShadow: m.role === "user"
+                      ? "none"
+                      : "0 1px 4px rgba(0,0,0,.06)",
+                    overflowWrap: "anywhere",
+                  }}>
+                    {m.role === "user" ? m.content : renderContent(m.content)}
+                    {m.adjuntos?.length > 0 && (
+                      <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+                        {m.adjuntos.map((a, j) => (
+                          <span key={j} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, opacity: .9 }}>
+                            {a.tipo === "application/pdf" ? <FileText size={12} /> : <ImageIcon size={12} />} {a.nombre}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* Copiar respuesta (nivel despacho: para llevar el borrador a un documento) */}
+                  {nivel === "despacho" && m.role === "assistant" && !m.bienvenida && (
+                    <button
+                      onClick={() => copiar(m.content, i)}
+                      style={{ marginTop: 4, background: "none", border: "none", padding: "2px 4px", display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: C.textMuted, cursor: "pointer", fontFamily: font }}
+                    >
+                      {copiado === i ? <><Check size={12} /> Copiado</> : <><Copy size={12} /> Copiar</>}
+                    </button>
                   )}
                 </div>
               </div>
@@ -501,6 +575,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
                       animation: `carlotaDot 1.4s ease ${j * 0.2}s infinite`,
                     }} />
                   ))}
+                  {nivel === "despacho" && <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 6 }}>Los escritos largos pueden tardar un minuto</span>}
                 </div>
               </div>
             )}
@@ -567,7 +642,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
                 {avisoAdjunto && <span style={{ fontSize: 11, color: C.red }}>{avisoAdjunto}</span>}
               </div>
             )}
-            <input ref={fileRef} id="carlota-adjuntos" type="file" accept={TIPOS_ADJUNTO.join(",")} multiple onChange={elegirArchivos} style={{ display: "none" }} />
+            <input ref={fileRef} id={enPagina ? "carlota-adjuntos-pagina" : "carlota-adjuntos"} type="file" accept={TIPOS_ADJUNTO.join(",")} multiple onChange={elegirArchivos} style={{ display: "none" }} />
             <div style={{
               display: "flex",
               gap: 8,
@@ -589,42 +664,44 @@ export default function Carlota({ user, currentModule = "general", currentContex
               </button>
               <textarea
                 ref={textareaRef}
+                id={enPagina ? "carlota-texto-pagina" : "carlota-texto"}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Pregunta a Carlota..."
-                rows={1}
+                placeholder={nivel === "despacho" ? "Pide un análisis, un resumen o un borrador..." : "Pregunta a Carlota..."}
+                rows={enPagina ? 3 : 1}
                 style={{
                   flex: 1,
                   border: "none",
                   outline: "none",
                   resize: "none",
-                  fontSize: 12.5,
+                  fontSize: enPagina ? 13.5 : 12.5,
                   fontFamily: font,
                   background: "transparent",
                   padding: "4px 0",
-                  maxHeight: 72,
+                  maxHeight: enPagina ? 180 : 72,
                   lineHeight: 1.5,
                   color: C.text,
                 }}
               />
               <button
                 onClick={() => sendMessage()}
-                disabled={(!input.trim() && !adjuntos.length) || isTyping}
+                disabled={!hayQueEnviar || isTyping}
+                aria-label="Enviar"
                 style={{
                   width: 32,
                   height: 32,
                   borderRadius: 9,
                   flexShrink: 0,
-                  background: (input.trim() || adjuntos.length)
+                  background: hayQueEnviar
                     ? `linear-gradient(135deg, ${C.primary}, ${C.violet})`
                     : C.border,
-                  color: (input.trim() || adjuntos.length) ? "#fff" : C.textMuted,
+                  color: hayQueEnviar ? "#fff" : C.textMuted,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   border: "none",
-                  cursor: (input.trim() || adjuntos.length) ? "pointer" : "default",
+                  cursor: hayQueEnviar ? "pointer" : "default",
                   transition: ".2s",
                 }}
               >
@@ -640,7 +717,9 @@ export default function Carlota({ user, currentModule = "general", currentContex
               marginTop: 7,
               lineHeight: 1.4,
             }}>
-              Informacion orientativa. No constituye asesoramiento legal vinculante.
+              {nivel === "despacho"
+                ? "Apoyo generado con IA para profesionales. Revisa y valida todo antes de usarlo."
+                : "Informacion orientativa. No constituye asesoramiento legal vinculante."}
             </p>
           </div>
         </div>
@@ -659,6 +738,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
             border-radius:18px 18px 0 0!important;
           }
         }
+        @media(max-width:420px){ .carlota-cta{ display:none } }
       `}</style>
     </>
   );

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard, Zap, Calendar, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, FolderKanban, LogOut, Menu, X, Bell, Users, Kanban, Settings, Building2, UserCog, Code, GitBranch, Scale, CreditCard, Zap, Calendar, ShieldCheck, Sparkles } from "lucide-react";
 import { LOGO, font, C } from "../constants";
 import { supabase } from '../lib/supabase';
 import Carlota from "../components/Carlota";
@@ -82,6 +82,7 @@ export default function AdminApp({ user, onLogout }) {
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "asistente", label: "Asistente IA Legal", icon: Sparkles },
     { id: "agenda", label: "Agenda", icon: Calendar },
     { id: "automations", label: "Automatizaciones", icon: Zap },
     { id: "cases", label: "Expedientes", icon: FolderKanban },
@@ -105,6 +106,7 @@ export default function AdminApp({ user, onLogout }) {
 
   const pageTitle = {
     dashboard: "Dashboard",
+    asistente: "Asistente IA Legal",
     agenda: "Agenda",
     automations: "Automatizaciones",
     cases: "Expedientes",
@@ -288,6 +290,7 @@ export default function AdminApp({ user, onLogout }) {
           {page === "contacts" && <ContactList setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "pipeline" && <ContactPipeline setPage={setPage} setSelectedContact={setSelectedContact} />}
           {page === "lexconsulta" && <SearchView />}
+          {page === "asistente" && <Carlota user={user} modo="pagina" currentModule="general" />}
           {page === "integrations" && <Integrations />}
           {page === "contact-detail" && selectedContact && (
             <ContactDetail
@@ -306,11 +309,14 @@ export default function AdminApp({ user, onLogout }) {
           {page === "settings" && settingsTab === "security" && <SecuritySettings />}
         </div>
       </main>
-      <Carlota
-        user={user}
-        currentModule={page === "contacts" || page === "pipeline" || page === "contact-detail" ? "lexcrm" : "general"}
-        currentContext={{}}
-      />
+      {/* La burbuja se oculta en la página del asistente para no duplicarlo */}
+      {page !== "asistente" && (
+        <Carlota
+          user={user}
+          currentModule={page === "contacts" || page === "pipeline" || page === "contact-detail" ? "lexcrm" : "general"}
+          currentContext={{}}
+        />
+      )}
     </div>
   );
 }
