@@ -84,7 +84,7 @@ Hallazgos nuevos:
 - ⏳ Sin hacer en esta sesión (sigue en la Fase 0 del roadmap): comprobar qué migraciones están aplicadas en producción y aplicar 015/016 si faltan.
 - ⏳ `npm audit` avisa de vulnerabilidades en dependencias de desarrollo (babel, vitest/mocker, brace-expansion, browserslist). No llegan al navegador; revisar con `npm audit fix` en una sesión aparte.
 
-### Fase 1 — seguridad barata (2026-09-11, en código; pendiente de desplegar)
+### Fase 1 — seguridad barata (2026-09-11; activada en producción el 2026-09-12)
 
 - ✅ `src/schema.test.js` (en `npm test`): falla si una tabla de public termina sin RLS, si una migración posterior a la 010 desactiva RLS, si una tabla creada después de la 019 no lleva `mfa_email_gate`, si hay huecos en la numeración o si `_bootstrap.sql` no está regenerado. Comprobado con una migración falsa.
 - ✅ `migration-020-usage-limits-errors.sql`: `usage_counters` + `consume_usage()` (contador atómico por usuario/minuto, usuario/día y despacho/día; solo `service_role`) y `function_errors`. Probada con 8 casos en PGlite.
@@ -92,7 +92,8 @@ Hallazgos nuevos:
 - ✅ `verify-document`: límite (10/min, 100/día por usuario; 1.000/día por despacho) y registro de errores.
 - ✅ `Carlota.jsx`: si el servidor devuelve límite o error, muestra un mensaje claro en vez de una respuesta de demostración (que parecía consejo legal real).
 - ✅ Todas las funciones cambiadas pasan `deno check`.
-- ⏳ **Para activarlo (necesita el visto bueno de José):** aplicar la migración 020 en `lexdocs-prod` y **después** desplegar `carlota-chat` y `verify-document`.
+- ✅ **Activado el 2026-09-12 con el OK de José:** migración 020 aplicada (39 tablas, 0 sin RLS, 39 con `mfa_email_gate`; `consume_usage` no ejecutable por `authenticated`); `carlota-chat` y `verify-document` desplegadas. `carlota-chat` responde 401 sin registrar en `function_errors` (antes cualquier petición anónima dejaba una fila). Commits subidos a GitHub.
+- ⏳ **Falta republicar la web** para que el nuevo `Carlota.jsx` (mensajes de límite/error) y el token de sesión en las llamadas lleguen a producción: `npx vercel deploy --prod` (bloqueado por permisos en la sesión; lo lanza José o lo autoriza de forma explícita).
 - ✅ `send-notification`, `gcal-check-availability` y `gcal-sync-event` exigen usuario con despacho y solo actúan dentro de él; `web-push-send` solo acepta llamadas internas (`_shared/llamador.ts`). Los 5 puntos de la app que las llaman envían ya el token de sesión, no la anon key. `deno check` OK salvo un aviso de tipos de la librería `web-push` que ya existía antes.
 - ⏳ Falta de la Fase 1: alertas cuando `function_errors` reciba errores.
 

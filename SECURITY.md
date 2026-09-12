@@ -128,13 +128,13 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
   llamadas internas (service_role o `X-Internal-Secret`). El frontend envía el token de sesión.
   Sin desplegar (no lo estaban).
   `verify-document` se corrigió y desplegó el 2026-09-11 (exige sesión de usuario y limita la imagen a ~5 MB).
-- ⚠️ **Rate limiting** en funciones de IA: **hecho en código, sin desplegar** (migration-020
+- ✅ **Rate limiting** en funciones de IA: **activo desde el 2026-09-12** (migration-020
   `consume_usage` + `_shared/limites.ts`): `carlota-chat` y `verify-document` limitan por usuario
   (minuto y día) y por despacho (día) antes de llamar a Anthropic. Si el contador falla, deja pasar
   (no tumba el servicio). Webhooks: pendiente (límite por IP).
 - ⚠️ **CORS `*`** en todas las funciones. Con JWT+org el riesgo baja, pero conviene
   restringir `Access-Control-Allow-Origin` al dominio del frontend.
-- ⚠️ **Límite de tamaño de payload**: `verify-document` (imagen ≤ ~5 MB, desplegado) y `carlota-chat` (≤ 200.000 caracteres, sin desplegar).
+- ⚠️ **Límite de tamaño de payload**: `verify-document` (imagen ≤ ~5 MB, desplegado) y `carlota-chat` (≤ 200.000 caracteres), ambos desplegados.
 - ⚠️ `tenant_slug` en querystring de webhooks de leads permite enumerar tenants.
 
 ---
@@ -170,7 +170,7 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
 - ⚠️ Tabla `activities` sirve de traza funcional, **no de audit log de seguridad**.
 - ❌ **Audit log de seguridad** (logins, accesos a datos sensibles, cambios de
   permisos, uso de service_role) con IP/user-agent. Pendiente.
-- ⚠️ **Error tracking**: tabla `function_errors` + `_shared/errores.ts` (migration-020, sin desplegar),
+- ⚠️ **Error tracking**: tabla `function_errors` + `_shared/errores.ts` (migration-020, activo),
   usada por `carlota-chat` y `verify-document`. Faltan alertas y extenderlo al resto de funciones.
 - ❌ **Filtrado de PII/secretos en logs** (`console.log` en Edge Functions). Pendiente.
 - ❌ **Runbook de respuesta a incidentes** + **notificación de brecha RGPD (72h)**.
@@ -205,7 +205,7 @@ Datos personales sensibles (clientes, deudas, expedientes). Antes de vender lice
 
 ### 🟠 P1 — antes de escalar
 - [x] Security headers + CSP (`vercel.json`).
-- [~] Rate limiting + límite de payload en Edge Functions de IA (código listo, migration-020 sin aplicar); webhooks pendiente.
+- [x] Rate limiting + límite de payload en Edge Functions de IA (activo 2026-09-12); webhooks pendiente.
 - [ ] Restringir CORS al dominio del frontend.
 - [ ] Audit log de seguridad + error tracking (Sentry) + alertas.
 - [ ] Backups/PITR documentados (`DISASTER_RECOVERY.md`).

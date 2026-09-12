@@ -97,7 +97,7 @@ Variables: copia `.env.example` a `.env`. Solo las `VITE_*` llegan al navegador.
 
 - ~~`node_modules/` y `dist/` trackeados en git; `vitest` UNMET~~ → resuelto el 2026-09-11 (Fase 0).
 - ~~Proyecto Supabase ajeno `agzcaq…` fijo en el código~~ → resuelto el 2026-09-11. La API REST, el formulario web y Zapier siguen sin backend (marcados "Próximamente").
-- Migración 020 escrita pero sin aplicar (2026-09-11): aplicarla ANTES de desplegar `carlota-chat`/`verify-document` nuevas.
+- Migraciones 001–020 aplicadas en producción (2026-09-12). Antes de aplicar una nueva, comprobar el estado con `supabase db query --linked`.
 - Toda tabla nueva necesita RLS y su política `mfa_email_gate` en la misma migración (lo comprueba `npm test`).
 - Proyecto Supabase `lexdocs-prod` en plan gratuito: se pausa tras 7 días sin actividad. Reactivar desde el panel de Supabase antes de probar contra producción.
 - Sin rate limiting en webhooks; sin audit log de seguridad; sin runbook RGPD. Detalle completo en `SECURITY.md`. Estado vivo en `docs/ESTADO.md`.

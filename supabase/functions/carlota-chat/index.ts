@@ -126,10 +126,14 @@ serve(async (req: Request) => {
     // Autenticar caller: NO confiamos en userRole/firstName del body (spoofable)
     const authHeader = req.headers.get("authorization") || "";
     const jwt = authHeader.replace(/^Bearer\s+/i, "");
-    if (!jwt) throw new Error("Authentication required");
-    const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(jwt);
-    if (authErr || !user) throw new Error("Invalid session");
-    if (!(await sesionConMfaEmailOk(jwt))) throw new Error("Email verification required");
+    // Sin sesión válida: 401 sin pasar por registrarError (si no, cualquiera
+    // podría llenar function_errors con peticiones anónimas)
+    const { data: { user }, error: authErr } = jwt ? await supabaseAdmin.auth.getUser(jwt) : { data: { user: null }, error: null };
+    if (authErr || !user || !(await sesionConMfaEmailOk(jwt))) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     userId = user.id;
 
