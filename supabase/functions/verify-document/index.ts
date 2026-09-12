@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { sesionConMfaEmailOk } from "../_shared/mfaEmail.ts";
 import { consumirUso, LIMITES } from "../_shared/limites.ts";
 import { registrarError } from "../_shared/errores.ts";
+import { anthropic, MODELO_IA, REINTENTO_ANTE_RECHAZO, textoDe } from "../_shared/claude.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -10,6 +11,24 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Límite de la imagen en base64 (~7 MB ≈ 5 MB de imagen, el máximo que acepta Claude)
 const MAX_IMAGE_BASE64 = 7_000_000;
+// Formatos de imagen que acepta Claude; el resto (p. ej. HEIC) pasa a revisión manual
+const TIPOS_IMAGEN = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+
+// Salida estructurada: la API garantiza este JSON (sin limpiar markdown a mano)
+const ESQUEMA_VEREDICTO = {
+  type: "object",
+  properties: {
+    verdict: { type: "string", enum: ["valid", "incomplete", "wrong_document", "expired", "unreadable"] },
+    confidence: { type: "integer" },
+    documentType: { type: "string" },
+    issuer: { anyOf: [{ type: "string" }, { type: "null" }] },
+    issueDate: { anyOf: [{ type: "string" }, { type: "null" }] },
+    message: { type: "string" },
+    warnings: { type: "array", items: { type: "string" } },
+  },
+  required: ["verdict", "confidence", "documentType", "issuer", "issueDate", "message", "warnings"],
+  additionalProperties: false,
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -94,8 +113,8 @@ serve(async (req: Request) => {
       });
     }
 
-    // Only support image types for vision
-    if (!mimeType.startsWith("image/")) {
+    // Solo imágenes en formatos que Claude acepta; lo demás lo revisa el letrado
+    if (!TIPOS_IMAGEN.includes(mimeType)) {
       return new Response(
         JSON.stringify({
           success: true,
@@ -124,60 +143,44 @@ serve(async (req: Request) => {
       clientName || "Cliente"
     );
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+    const response = await anthropic.beta.messages.create({
+      model: MODELO_IA,
+      max_tokens: 8000,
+      output_config: {
+        effort: "medium",
+        format: { type: "json_schema", schema: ESQUEMA_VEREDICTO },
       },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: mimeType,
-                  data: imageBase64,
-                },
-              },
-              {
-                type: "text",
-                text: prompt,
-              },
-            ],
-          },
-        ],
-      }),
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: { type: "base64", media_type: mimeType as typeof TIPOS_IMAGEN[number], data: imageBase64 },
+            },
+            { type: "text", text: prompt },
+          ],
+        },
+      ],
+      ...REINTENTO_ANTE_RECHAZO,
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error?.message || "Claude API error");
-    }
-
-    const rawText = data.content?.map((b: any) => b.text || "").join("") || "{}";
-
-    // Parse JSON from response (Claude sometimes adds markdown blocks)
     let parsed;
-    try {
-      const cleanText = rawText.replace(/```json\s*|\s*```/g, "").trim();
-      parsed = JSON.parse(cleanText);
-    } catch (e) {
-      // Fallback if parsing fails
+    if (response.stop_reason === "refusal") {
       parsed = {
-        verdict: "needs_review",
-        confidence: 50,
-        documentType: "No determinado",
-        message: rawText.slice(0, 200) || "He recibido tu documento. Tu letrado lo revisará.",
-        warnings: ["No pude procesar la respuesta automáticamente"],
+        verdict: "needs_review", confidence: 0, documentType: "No determinado",
+        message: `${clientName || "Cliente"}, he recibido tu documento. Tu letrado lo revisará.`, warnings: [],
       };
+    } else {
+      try {
+        parsed = JSON.parse(textoDe(response));
+      } catch {
+        parsed = {
+          verdict: "needs_review", confidence: 50, documentType: "No determinado",
+          message: "He recibido tu documento. Tu letrado lo revisará.",
+          warnings: ["No pude procesar la respuesta automáticamente"],
+        };
+      }
     }
 
     return new Response(

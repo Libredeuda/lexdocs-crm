@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { sesionConMfaEmailOk } from "../_shared/mfaEmail.ts";
 import { consumirUso, LIMITES } from "../_shared/limites.ts";
 import { registrarError } from "../_shared/errores.ts";
+import { anthropic, MODELO_IA, REINTENTO_ANTE_RECHAZO, textoDe } from "../_shared/claude.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -36,6 +37,7 @@ PERSONALIDAD:
 - Profesional pero cercana, tuteas al usuario
 - Respondes en espa\u00f1ol de Espa\u00f1a
 - Mensajes concisos y \u00fatiles, sin jerga innecesaria
+- Respuestas centradas y breves para no abrumar: los avisos y matices, cortos; la mayor parte de la respuesta, sobre lo que se pregunta. Si te piden explicar algo, da un resumen claro salvo que pidan m\u00e1s detalle
 
 \u2757 REGLA DE ORO \u2014 CERTEZA O DERIVA:
 - SOLO das informaci\u00f3n de la que est\u00e9s 100% segura.
@@ -107,7 +109,11 @@ DISCLAIMER FINAL OBLIGATORIO:
     general: '',
   };
 
-  return base + (roleContextMap[userRole] || roleContextMap.client) + (moduleContextMap[module] || '');
+  // owner habla como admin y procurador como staff; cualquier otro rol, con el tono (prudente) de cliente
+  const roleContext = roleContextMap[userRole]
+    ?? (userRole === 'owner' ? roleContextMap.admin : userRole === 'procurador' ? roleContextMap.staff : roleContextMap.client);
+
+  return base + roleContext + (moduleContextMap[module] || '');
 }
 
 serve(async (req: Request) => {
@@ -183,28 +189,19 @@ serve(async (req: Request) => {
 
     const systemPrompt = buildSystemPrompt(realFirstName, realRole, currentModule || "general", currentContext || {});
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: messages.slice(-10),
-      }),
+    // Opus 5 piensa por defecto: max_tokens cubre razonamiento + respuesta
+    const response = await anthropic.beta.messages.create({
+      model: MODELO_IA,
+      max_tokens: 16000,
+      output_config: { effort: "medium" },
+      system: systemPrompt,
+      messages: messages.slice(-10),
+      ...REINTENTO_ANTE_RECHAZO,
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error?.message || "Claude API error");
-    }
-
-    const reply = data.content?.map((b: any) => b.text || "").join("") || "Disculpa, no he podido procesar tu pregunta.";
+    const reply = response.stop_reason === "refusal"
+      ? "No puedo ayudarte con esa consulta. Si es sobre tu expediente, escríbele a tu abogado desde la pestaña 'Mi abogado'."
+      : textoDe(response) || "Disculpa, no he podido procesar tu pregunta.";
 
     return new Response(
       JSON.stringify({ success: true, reply }),
