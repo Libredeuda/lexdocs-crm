@@ -130,7 +130,10 @@ Descubierto en producción al preparar el despliegue:
 - Un solo repositorio, una sola SPA con tres módulos, sin router de rutas (navegación por estado).
 - Esquema versionado con migraciones numeradas + `_bootstrap.sql` regenerado.
 - Cuentas demo solo con `VITE_DEMO_MODE=true`.
-- Modelo comercial: venta directa a despachos con alta self-service. **Sin agencia distribuidora** (decisión de José, 2026-09-12). Precios pendientes de confirmar: la documentación dice fundadores 49 €/mes de por vida y público 79 €/mes; el formulario de alta muestra 139 €/mes/letrado.
+- Modelo comercial: venta directa a despachos con alta self-service. **Sin agencia distribuidora** (decisión de José, 2026-09-12).
+- **Planes (decisión de José, 2026-09-12; pendiente de ajustes tras el análisis):** Starter 89 €/mes (1 usuario), Company 149 €/mes (hasta 3), Top 10 349 €/mes (hasta 10), y "a medida" para más de 10 (contacto). Pago mensual con opción anual "2 meses gratis" (= 10 mensualidades). Solo cuentan como usuarios los roles del despacho (admin, owner, lawyer, staff, sales, procurador), no los clientes (trigger de `migration-014`).
+- **Alta:** se paga al darse de alta, con garantía de devolución de 14 días. **Primer servicio a conectar: Stripe.** Sustituye a los planes antiguos del código (Individual/Team en `BillingSettings.jsx` y `stripe-checkout`; 139 € en `Onboarding.jsx`).
+- ⚠️ `carlota-chat` y `verify-document` usan `claude-sonnet-4-20250514`, **modelo deprecado por Anthropic** (retirada sin fecha): hay que migrarlo antes de que deje de responder.
 
 ## Puntos de duda a resolver con José antes de codificar
 
