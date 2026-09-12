@@ -80,6 +80,12 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
 
 **Estado / acciones:**
 - 🔴 **`VITE_ANTHROPIC_API_KEY` estaba viva en `.env`** → eliminada del `.env`.
+  *Investigación 2026-09-12:* la clave filtrada (`sk-ant-api03-Lqe…QgAA`) va dentro del bundle de 17 de los
+  20 despliegues antiguos de Vercel (abril 2026), incluido el que se sirvió en producción hasta el 11-09.
+  No está en el historial de git. **No es la del servidor** (huella distinta de `ANTHROPIC_API_KEY` en
+  Supabase) y **no aparece** entre las 4 claves del espacio "Default" de la consola de Anthropic (Lexdocs,
+  mudanzabot, Mudanzabot_2, Mudanzabot_3): o ya se revocó o vive en otro espacio u organización. Pendiente:
+  confirmarlo y borrar esos 17 despliegues antiguos.
   **ACCIÓN MANUAL: revocar y rotar esa clave en console.anthropic.com** (se considera
   comprometida). La de Anthropic solo debe existir como secret de Edge Function.
 - ✅ `.env` y `supabase/.temp/` en `.gitignore` (no se versionan).
