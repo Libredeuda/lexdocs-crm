@@ -83,9 +83,8 @@ Es la propiedad de seguridad central: **ningún despacho puede ver datos de otro
   *Investigación 2026-09-12:* la clave filtrada (`sk-ant-api03-Lqe…QgAA`) va dentro del bundle de 17 de los
   20 despliegues antiguos de Vercel (abril 2026), incluido el que se sirvió en producción hasta el 11-09.
   No está en el historial de git. **No es la del servidor** (huella distinta de `ANTHROPIC_API_KEY` en
-  Supabase) y **no aparece** entre las 4 claves del espacio "Default" de la consola de Anthropic (Lexdocs,
-  mudanzabot, Mudanzabot_2, Mudanzabot_3): o ya se revocó o vive en otro espacio u organización. Pendiente:
-  confirmarlo y borrar esos 17 despliegues antiguos.
+  Supabase) y **no existe ya en la cuenta de Anthropic** (José lo confirma el 2026-09-12): estaba revocada.
+  Los 18 despliegues antiguos que la contenían se borraron de Vercel el 2026-09-12; quedan 5, todos sin claves.
   **ACCIÓN MANUAL: revocar y rotar esa clave en console.anthropic.com** (se considera
   comprometida). La de Anthropic solo debe existir como secret de Edge Function.
 - ✅ `.env` y `supabase/.temp/` en `.gitignore` (no se versionan).
@@ -198,7 +197,7 @@ Datos personales sensibles (clientes, deudas, expedientes). Antes de vender lice
 ## 11. Checklist de hardening priorizado
 
 ### 🔴 P0 — antes del primer cliente de pago
-- [ ] **Revocar + rotar** la clave Anthropic comprometida (manual, Anthropic console).
+- [x] **Revocar + rotar** la clave Anthropic comprometida (revocada; copias en Vercel borradas el 2026-09-12).
 - [x] Eliminar credenciales DEMO del bundle de producción (detrás de `VITE_DEMO_MODE`).
 - [x] Cerrar IDOR cross-tenant en `ai-lead-scorer` (auth + `org_id`).
 - [x] Aplicar migraciones 015 + 016 en prod (verificado 2026-09-11; 001–019 aplicadas).
