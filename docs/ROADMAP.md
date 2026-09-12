@@ -31,9 +31,9 @@ Sin esto no hay SaaS: hoy dar de alta un despacho requiere SQL a mano.
 - Pantalla de primer arranque: subir logo, colores, invitar equipo.
 - Enforcement de trial (`trial_ends_at`) ya existe; conectarlo al flujo.
 
-## Fase 3 — Agency Master (3–4 sesiones)
+## Fase 3 — Agency Master · 🚫 DESCARTADA (2026-09-12)
 
-Solo si la agencia distribuidora sigue siendo el canal. Diseño ya definido en el brief técnico:
+José confirma que la agencia distribuidora ya no es el canal: no se construye. Se conserva el diseño por si cambia el modelo comercial:
 
 - Migración 019: tablas `agencies`, `agency_users`; columna `agency_id` en `tenants`; políticas RLS que dan a la agencia acceso **solo a metadatos** de sus despachos (nunca a `documents`, `messages`, `carlota_messages`, `notes`).
 - Rol `agency_admin` en `users` y en `auth_org_id()` / helpers.

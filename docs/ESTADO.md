@@ -42,7 +42,7 @@ RLS completo, storage por `org_id`, webhooks firmados, clave Anthropic fuera del
 
 | Bloque | Estado | Nota |
 |---|---|---|
-| **Agency Master** (capa de agencia: tablas `agencies`, `agency_users`, dashboard de agencia, marca blanca, facturación por sub-cuenta) | ❌ No existe nada en el código | Era el brief para el equipo de desarrollo; nunca se implementó. Es el bloqueo del modelo comercial con la agencia distribuidora |
+| ~~Agency Master~~ (capa de agencia, marca blanca, facturación por sub-cuenta) | 🚫 Descartado (2026-09-12) | José confirma que la agencia distribuidora ya no es el canal. No se construye salvo que cambie el modelo comercial |
 | Embeddings reales en LexConsulta | ❌ | Las columnas `embedding` existen; falta el paso que genera embeddings (Cohere) en los workers y la búsqueda semántica en `SearchView` |
 | Workers en Railway con cron | ❌ | Hoy son scripts manuales |
 | Migraciones 015 y 016 en producción | ✅ 2026-09-11 | Verificado en `lexdocs-prod`: 015–018 aplicadas, 35 tablas, 0 sin RLS |
@@ -130,11 +130,11 @@ Descubierto en producción al preparar el despliegue:
 - Un solo repositorio, una sola SPA con tres módulos, sin router de rutas (navegación por estado).
 - Esquema versionado con migraciones numeradas + `_bootstrap.sql` regenerado.
 - Cuentas demo solo con `VITE_DEMO_MODE=true`.
-- Modelo comercial: fundadores 49 €/mes de por vida, público 79 €/mes; agencia distribuidora con 40 % recurrente o licencia Agency Master tipo GoHighLevel.
+- Modelo comercial: venta directa a despachos con alta self-service. **Sin agencia distribuidora** (decisión de José, 2026-09-12). Precios pendientes de confirmar: la documentación dice fundadores 49 €/mes de por vida y público 79 €/mes; el formulario de alta muestra 139 €/mes/letrado.
 
 ## Puntos de duda a resolver con José antes de codificar
 
-1. ¿Sigue en pie la agencia externa como canal principal? Si sí, Agency Master es la fase 1. Si no, la fase 1 es el alta self-service de despachos.
+1. ~~¿Sigue en pie la agencia externa como canal principal?~~ **No** (2026-09-12). La prioridad comercial es el alta self-service de despachos (Fase 2); Agency Master queda descartado.
 2. ¿El proyecto Supabase `ujhulpkcllrcgftqeelx` se puede borrar?
 3. ¿Hay ya despachos reales (aparte de LibreDeuda) con datos en `lexdocs-prod`? Condiciona cuánto cuidado hace falta con las migraciones.
 4. ¿Se mantiene `libertadhipotecaria/` dentro de este repositorio o se mueve al suyo?
