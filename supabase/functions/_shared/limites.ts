@@ -9,6 +9,8 @@ export type Limites = { porMinuto: number | null; porDia: number | null; despach
 export const LIMITES: Record<string, Limites> = {
   "carlota": { porMinuto: 10, porDia: 50, despachoPorDia: 1000 },
   "verify-document": { porMinuto: 10, porDia: 100, despachoPorDia: 1000 },
+  // Cada foto o PDF enviado a Carlota (leerlo cuesta mucho más que una pregunta)
+  "carlota-adjuntos": { porMinuto: 5, porDia: 30, despachoPorDia: 300 },
 };
 
 const MENSAJES: Record<string, Record<string, string>> = {
@@ -16,6 +18,11 @@ const MENSAJES: Record<string, Record<string, string>> = {
     user_minute: "Vas muy rápido: espera un minuto y vuelve a preguntarme.",
     user_day: "Has llegado al límite diario de consultas a Carlota. Mañana podrás seguir; si es urgente, escribe a tu despacho.",
     org_day: "El despacho ha llegado al límite diario de consultas a Carlota. Mañana volverá a estar disponible.",
+  },
+  "carlota-adjuntos": {
+    user_minute: "Has enviado muchos archivos seguidos: espera un minuto y vuelve a intentarlo.",
+    user_day: "Has llegado al límite diario de archivos para Carlota. Mañana podrás enviar más; puedes seguir preguntando por escrito.",
+    org_day: "El despacho ha llegado al límite diario de archivos para Carlota. Mañana volverá a estar disponible.",
   },
   "verify-document": {
     user_minute: "Has subido muchos documentos seguidos: espera un minuto y vuelve a intentarlo.",

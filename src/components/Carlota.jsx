@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, X, Send, MessageCircle, Bot } from "lucide-react";
+import { Sparkles, X, Send, Paperclip, FileText, Image as ImageIcon } from "lucide-react";
 import { C, font } from "../constants";
 import { supabase } from "../lib/supabase";
 
@@ -40,6 +40,21 @@ function matchDemoResponse(text, firstName) {
   return (useGreeting ? getGreeting(firstName) : "") + response + DISCLAIMER;
 }
 
+// Adjuntos: fotos y PDF que Claude lee directamente. No se guardan: viajan solo
+// con el mensaje en que se adjuntan (en el historial queda una nota con el nombre).
+const TIPOS_ADJUNTO = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
+const MAX_ADJUNTOS = 3;
+const MAX_BYTES_ADJUNTOS = 6 * 1024 * 1024;
+
+function leerComoBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 const MODULE_SUBTITLES = {
   lexdocs: "Asistente Documental",
   lexcrm: "Asistente CRM",
@@ -65,8 +80,11 @@ export default function Carlota({ user, currentModule = "general", currentContex
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [hasPulse, setHasPulse] = useState(true);
+  const [adjuntos, setAdjuntos] = useState([]); // { nombre, tipo, tamano, datos(base64) }
+  const [avisoAdjunto, setAvisoAdjunto] = useState("");
   const endRef = useRef(null);
   const textareaRef = useRef(null);
+  const fileRef = useRef(null);
 
   const firstName = (user?.full_name || user?.name || "").split(" ")[0] || "usuario";
   const role = user?.role || "client";
@@ -109,12 +127,31 @@ export default function Carlota({ user, currentModule = "general", currentContex
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function elegirArchivos(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    setAvisoAdjunto("");
+    const nuevos = [];
+    let total = adjuntos.reduce((n, a) => n + a.tamano, 0);
+    for (const f of files) {
+      if (!TIPOS_ADJUNTO.includes(f.type)) { setAvisoAdjunto(`"${f.name}": solo fotos (JPG, PNG, GIF, WebP) o PDF.`); continue; }
+      if (adjuntos.length + nuevos.length >= MAX_ADJUNTOS) { setAvisoAdjunto(`Máximo ${MAX_ADJUNTOS} archivos por mensaje.`); break; }
+      if (total + f.size > MAX_BYTES_ADJUNTOS) { setAvisoAdjunto("Los archivos no pueden pasar de 6 MB en total."); break; }
+      total += f.size;
+      nuevos.push({ nombre: f.name, tipo: f.type, tamano: f.size, datos: await leerComoBase64(f) });
+    }
+    if (nuevos.length) setAdjuntos(prev => [...prev, ...nuevos]);
+  }
+
   async function sendMessage(text) {
-    const msg = (text || input).trim();
+    const enviados = text ? [] : adjuntos;
+    const msg = (text || input).trim() || (enviados.length ? "Te envío este archivo." : "");
     if (!msg || isTyping) return;
     setInput("");
+    setAdjuntos([]);
+    setAvisoAdjunto("");
 
-    const userMsg = { role: "user", content: msg, timestamp: Date.now() };
+    const userMsg = { role: "user", content: msg, adjuntos: enviados.map(a => ({ nombre: a.nombre, tipo: a.tipo })), timestamp: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
@@ -125,11 +162,15 @@ export default function Carlota({ user, currentModule = "general", currentContex
       // La API key de Anthropic vive SOLO en el servidor (Edge Function). Nunca
       // se llama a api.anthropic.com desde el navegador para no exponer la clave.
       try {
+        // Historial solo en texto: los adjuntos anteriores quedan como nota
         const apiMessages = messages
           .filter(m => m.role === 'user' || m.role === 'assistant')
           .slice(-10)
-          .concat([{ role: 'user', content: msg }])
-          .map(m => ({ role: m.role, content: m.content }));
+          .map(m => ({
+            role: m.role,
+            content: m.adjuntos?.length ? `${m.content}\n[Adjuntó: ${m.adjuntos.map(a => a.nombre).join(", ")}]` : m.content,
+          }))
+          .concat([{ role: 'user', content: msg }]);
 
         const { data: { session } } = await supabase.auth.getSession();
         const accessToken = session?.access_token;
@@ -144,6 +185,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
             },
             body: JSON.stringify({
               messages: apiMessages,
+              adjuntos: enviados.map(a => ({ nombre: a.nombre, tipo: a.tipo, datos: a.datos })),
               currentModule,
               currentContext,
             }),
@@ -413,6 +455,15 @@ export default function Carlota({ user, currentModule = "general", currentContex
                     : "0 1px 4px rgba(0,0,0,.06)",
                 }}>
                   {m.role === "user" ? m.content : renderContent(m.content)}
+                  {m.adjuntos?.length > 0 && (
+                    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+                      {m.adjuntos.map((a, j) => (
+                        <span key={j} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, opacity: .9 }}>
+                          {a.tipo === "application/pdf" ? <FileText size={12} /> : <ImageIcon size={12} />} {a.nombre}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -504,6 +555,19 @@ export default function Carlota({ user, currentModule = "general", currentContex
             background: C.white,
             flexShrink: 0,
           }}>
+            {(adjuntos.length > 0 || avisoAdjunto) && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 7 }}>
+                {adjuntos.map((a, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", borderRadius: 8, background: C.bg, border: `1px solid ${C.border}`, fontSize: 11, color: C.text, maxWidth: "100%" }}>
+                    {a.tipo === "application/pdf" ? <FileText size={12} color={C.primary} /> : <ImageIcon size={12} color={C.primary} />}
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{a.nombre}</span>
+                    <button onClick={() => setAdjuntos(prev => prev.filter((_, j) => j !== i))} aria-label={`Quitar ${a.nombre}`} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, color: C.textMuted, display: "flex" }}><X size={12} /></button>
+                  </span>
+                ))}
+                {avisoAdjunto && <span style={{ fontSize: 11, color: C.red }}>{avisoAdjunto}</span>}
+              </div>
+            )}
+            <input ref={fileRef} id="carlota-adjuntos" type="file" accept={TIPOS_ADJUNTO.join(",")} multiple onChange={elegirArchivos} style={{ display: "none" }} />
             <div style={{
               display: "flex",
               gap: 8,
@@ -514,6 +578,15 @@ export default function Carlota({ user, currentModule = "general", currentContex
               border: `1.5px solid ${C.border}`,
               transition: ".2s",
             }}>
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={isTyping || adjuntos.length >= MAX_ADJUNTOS}
+                aria-label="Adjuntar foto o PDF"
+                title="Adjuntar foto o PDF"
+                style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: "transparent", color: C.textMuted, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}
+              >
+                <Paperclip size={16} />
+              </button>
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -537,21 +610,21 @@ export default function Carlota({ user, currentModule = "general", currentContex
               />
               <button
                 onClick={() => sendMessage()}
-                disabled={!input.trim() || isTyping}
+                disabled={(!input.trim() && !adjuntos.length) || isTyping}
                 style={{
                   width: 32,
                   height: 32,
                   borderRadius: 9,
                   flexShrink: 0,
-                  background: input.trim()
+                  background: (input.trim() || adjuntos.length)
                     ? `linear-gradient(135deg, ${C.primary}, ${C.violet})`
                     : C.border,
-                  color: input.trim() ? "#fff" : C.textMuted,
+                  color: (input.trim() || adjuntos.length) ? "#fff" : C.textMuted,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   border: "none",
-                  cursor: input.trim() ? "pointer" : "default",
+                  cursor: (input.trim() || adjuntos.length) ? "pointer" : "default",
                   transition: ".2s",
                 }}
               >

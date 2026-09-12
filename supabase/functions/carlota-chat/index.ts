@@ -11,8 +11,13 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// Tamaño máximo de la petición (la conversación se recorta a 10 mensajes al llamar a Claude)
-const MAX_BODY_CHARS = 200_000;
+// Tamaño máximo de la petición (la conversación se recorta a 10 mensajes al llamar a Claude).
+// Con adjuntos: hasta 3 fotos/PDF y 6 MB (≈ 8,4 M caracteres en base64).
+const MAX_BODY_CHARS = 9_000_000;
+const MAX_TEXTO_CHARS = 200_000;
+const MAX_ADJUNTOS = 3;
+const TIPOS_IMAGEN = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+type Adjunto = { nombre?: string; tipo: string; datos: string };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,6 +64,11 @@ PROHIBICIONES:
 - Nunca predices resultados judiciales (nunca "vas a ganar", "te van a exonerar", etc.).
 - Nunca calculas plazos procesales exactos para un caso concreto (solo plazos gen\u00e9ricos de la ley).
 - Nunca interpretas documentos concretos del expediente (eso lo hace el abogado).
+
+ARCHIVOS ADJUNTOS (fotos o PDF que te env\u00eda el usuario):
+- Puedes decir qu\u00e9 tipo de documento parece, si corresponde a la documentaci\u00f3n que se suele pedir en LSO o concurso, si se lee bien y si parece incompleto (p. ej. faltan p\u00e1ginas o una cara del DNI).
+- No lo interpretas jur\u00eddicamente ni sacas conclusiones para su caso (ver PROHIBICIONES): para eso, deriva al abogado.
+- No repites datos personales del documento (n\u00fameros de DNI, cuentas, importes) salvo que el usuario lo pida expresamente.
 - Nunca hablas sobre otras jurisdicciones ni derecho comparado salvo TJUE vinculante.
 - Nunca tomas decisiones por el cliente (ej. "firma esto", "rechaza la oferta"). Derivas al abogado.
 
@@ -167,8 +177,19 @@ serve(async (req: Request) => {
         status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const { messages, currentModule, currentContext } = JSON.parse(raw);
+    const { messages, adjuntos = [], currentModule, currentContext } = JSON.parse(raw);
     if (!Array.isArray(messages) || messages.length === 0) throw new Error("messages required");
+    const soloTexto = JSON.stringify(messages).length;
+    const adjuntosValidos = Array.isArray(adjuntos)
+      && adjuntos.length <= MAX_ADJUNTOS
+      && adjuntos.every((a: Adjunto) =>
+        (TIPOS_IMAGEN as readonly string[]).includes(a?.tipo) || a?.tipo === "application/pdf")
+      && adjuntos.every((a: Adjunto) => typeof a?.datos === "string" && a.datos.length > 0);
+    if (soloTexto > MAX_TEXTO_CHARS || !adjuntosValidos) {
+      return new Response(JSON.stringify({ success: false, code: "demasiado_grande", error: "El mensaje es demasiado largo o el archivo no es una foto o un PDF válido." }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Límite de uso (antes de gastar en Anthropic). El diario por usuario sale del plan del despacho.
     let porDia = LIMITES.carlota.porDia;
@@ -181,10 +202,28 @@ serve(async (req: Request) => {
       porDia = tenant?.max_carlota_messages_per_day ?? porDia;
     }
     const uso = await consumirUso(supabaseAdmin, "carlota", user.id, orgId, { ...LIMITES.carlota, porDia });
-    if (!uso.ok) {
-      return new Response(JSON.stringify({ success: false, code: "limite", error: uso.mensaje, retry_after: uso.reintentarEn }), {
-        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(uso.reintentarEn) },
+    // Leer un PDF o una foto cuesta mucho más que una pregunta: cada adjunto cuenta aparte
+    let usoAdjuntos = uso;
+    for (let i = 0; usoAdjuntos.ok && i < adjuntos.length; i++) {
+      usoAdjuntos = await consumirUso(supabaseAdmin, "carlota-adjuntos", user.id, orgId, LIMITES["carlota-adjuntos"]);
+    }
+    const bloqueo = !uso.ok ? uso : !usoAdjuntos.ok ? usoAdjuntos : null;
+    if (bloqueo && !bloqueo.ok) {
+      return new Response(JSON.stringify({ success: false, code: "limite", error: bloqueo.mensaje, retry_after: bloqueo.reintentarEn }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": String(bloqueo.reintentarEn) },
       });
+    }
+
+    // Los adjuntos van en el último mensaje del usuario, antes de su texto
+    const conversacion = messages.slice(-10);
+    if (adjuntos.length) {
+      const ultimo = conversacion[conversacion.length - 1];
+      ultimo.content = [
+        ...adjuntos.map((a: Adjunto) => a.tipo === "application/pdf"
+          ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.datos }, title: (a.nombre || "documento.pdf").slice(0, 200) }
+          : { type: "image", source: { type: "base64", media_type: a.tipo as typeof TIPOS_IMAGEN[number], data: a.datos } }),
+        { type: "text", text: String(ultimo.content || "") },
+      ];
     }
 
     const systemPrompt = buildSystemPrompt(realFirstName, realRole, currentModule || "general", currentContext || {});
@@ -195,7 +234,7 @@ serve(async (req: Request) => {
       max_tokens: 16000,
       output_config: { effort: "medium" },
       system: systemPrompt,
-      messages: messages.slice(-10),
+      messages: conversacion,
       ...REINTENTO_ANTE_RECHAZO,
     });
 
