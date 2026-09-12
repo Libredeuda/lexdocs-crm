@@ -8,7 +8,7 @@ export const MESES_PAGADOS_AL_ANIO = 10;
 export const PLANES = [
   { id: "starter", nombre: "Starter", usuarios: 1, mensual: 89 },
   { id: "company", nombre: "Company", usuarios: 3, mensual: 149 },
-  { id: "team", nombre: "Team", usuarios: 5, mensual: 229 }, // nombre y precio provisionales, pendientes de confirmar
+  { id: "team", nombre: "Team", usuarios: 5, mensual: 229 },
   { id: "top10", nombre: "Top 10", usuarios: 10, mensual: 349 },
 ];
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, X, Send, Paperclip, FileText, FileSpreadsheet, Image as ImageIcon, Copy, Check, RotateCcw } from "lucide-react";
+import { Sparkles, X, Send, Paperclip, FileText, FileSpreadsheet, Image as ImageIcon, Copy, Check, RotateCcw, Mic, MicOff } from "lucide-react";
 import { ACEPTADOS, MAX_ADJUNTOS, MAX_BYTES_ADJUNTOS, prepararAdjunto } from "../lib/adjuntos";
 import { C, font } from "../constants";
 import { supabase } from "../lib/supabase";
@@ -57,6 +57,10 @@ const IconoAdjunto = ({ a, size = 12, color }) =>
     : a.origen === "hoja" ? <FileSpreadsheet size={size} color={color} />
       : <FileText size={size} color={color} />;
 
+// Dictado por voz: reconocimiento del propio navegador (Chrome, Edge, Safari).
+// No pasa por LibreApp ni por Anthropic; en Firefox no existe y el botón no aparece.
+const Reconocimiento = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+
 const MODULE_SUBTITLES = {
   lexdocs: "Asistente Documental",
   lexcrm: "Asistente CRM",
@@ -91,6 +95,9 @@ export default function Carlota({ user, currentModule = "general", currentContex
   const [adjuntos, setAdjuntos] = useState([]); // { nombre, tipo, tamano, datos(base64) }
   const [avisoAdjunto, setAvisoAdjunto] = useState("");
   const [copiado, setCopiado] = useState(null);
+  const [dictando, setDictando] = useState(false);
+  const reconocimientoRef = useRef(null);
+  const textoAntesDeDictarRef = useRef("");
   const endRef = useRef(null);
   const textareaRef = useRef(null);
   const fileRef = useRef(null);
@@ -168,6 +175,30 @@ export default function Carlota({ user, currentModule = "general", currentContex
     setMessages([{ role: "assistant", content: BIENVENIDA[nivel](firstName) + DISCLAIMER[nivel], timestamp: Date.now(), bienvenida: true }]);
   }
 
+  function alternarDictado() {
+    if (dictando) { reconocimientoRef.current?.stop(); return; }
+    const rec = new Reconocimiento();
+    rec.lang = "es-ES";
+    rec.continuous = true;
+    rec.interimResults = true;
+    textoAntesDeDictarRef.current = input ? input.replace(/\s*$/, " ") : "";
+    rec.onresult = (e) => {
+      let dicho = "";
+      for (let i = 0; i < e.results.length; i++) dicho += e.results[i][0].transcript;
+      setInput(textoAntesDeDictarRef.current + dicho.trimStart());
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") setAvisoAdjunto("Permite el micrófono en el navegador para dictar.");
+    };
+    rec.onend = () => { setDictando(false); textareaRef.current?.focus(); };
+    reconocimientoRef.current = rec;
+    rec.start();
+    setDictando(true);
+  }
+
+  // Si se cierra el panel mientras se dicta, se para el micrófono
+  useEffect(() => () => reconocimientoRef.current?.stop(), []);
+
   async function copiar(texto, i) {
     try {
       await navigator.clipboard.writeText(texto);
@@ -180,6 +211,7 @@ export default function Carlota({ user, currentModule = "general", currentContex
     const enviados = adjuntos;
     const msg = (text || input).trim() || (enviados.length ? "Te envío este archivo." : "");
     if (!msg || isTyping) return;
+    if (dictando) reconocimientoRef.current?.stop();
     setInput("");
     setAdjuntos([]);
     setAvisoAdjunto("");
@@ -656,13 +688,25 @@ export default function Carlota({ user, currentModule = "general", currentContex
               >
                 <Paperclip size={16} />
               </button>
+              {Reconocimiento && (
+                <button
+                  onClick={alternarDictado}
+                  disabled={isTyping}
+                  aria-label={dictando ? "Parar el dictado" : "Dictar por voz"}
+                  aria-pressed={dictando}
+                  title={dictando ? "Parar el dictado" : "Dictar por voz"}
+                  style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: dictando ? `${C.red}15` : "transparent", color: dictando ? C.red : C.textMuted, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", animation: dictando ? "carlotaDot 1.4s ease infinite" : "none" }}
+                >
+                  {dictando ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+              )}
               <textarea
                 ref={textareaRef}
                 id={enPagina ? "carlota-texto-pagina" : "carlota-texto"}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={nivel === "despacho" ? "Pide un análisis, un resumen o un borrador..." : "Pregunta a Carlota..."}
+                placeholder={dictando ? "Te escucho… pulsa el micrófono para terminar" : nivel === "despacho" ? "Pide un análisis, un resumen o un borrador..." : "Pregunta a Carlota..."}
                 rows={enPagina ? 3 : 1}
                 style={{
                   flex: 1,
