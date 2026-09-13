@@ -12,13 +12,17 @@ export default function Login({ onLogin, onShowOnboarding }) {
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
   const [ld, setLd] = useState(false);
+  const [verPass, setVerPass] = useState(false);
+
+  // Espacios y mayúsculas que cuelan el autocompletado o el pegado hacen fallar el login
+  const emailLimpio = () => email.trim().toLowerCase();
 
   async function go() {
     setLd(true);
     setErr("");
     setInfo("");
     try {
-      await onLogin(email, pass);
+      await onLogin(emailLimpio(), pass);
     } catch (e) {
       setErr(e.message || "Credenciales incorrectas");
     } finally {
@@ -27,7 +31,7 @@ export default function Login({ onLogin, onShowOnboarding }) {
   }
 
   async function sendReset() {
-    if (!email.trim()) {
+    if (!emailLimpio()) {
       setErr("Escribe tu email arriba y vuelve a pulsar “¿Olvidaste tu contraseña?”.");
       return;
     }
@@ -35,11 +39,11 @@ export default function Login({ onLogin, onShowOnboarding }) {
     setErr("");
     setInfo("");
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      const { error } = await supabase.auth.resetPasswordForEmail(emailLimpio(), {
         redirectTo: window.location.origin,
       });
       if (error) throw error;
-      setInfo(`Si ${email.trim()} tiene cuenta, te hemos enviado un enlace para restablecer la contraseña. Revisa tu correo (y spam).`);
+      setInfo(`Si ${emailLimpio()} tiene cuenta, te hemos enviado un enlace para restablecer la contraseña. Revisa tu correo (y spam).`);
     } catch (e) {
       setErr(e.message || "No se pudo enviar el email de recuperación.");
     } finally {
@@ -66,10 +70,14 @@ export default function Login({ onLogin, onShowOnboarding }) {
       <div className="login-form" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 32 }}>
         <div style={{ width: "100%", maxWidth: 380, background: C.white, borderRadius: 20, padding: "40px 32px", boxShadow: "0 20px 60px rgba(0,0,0,.3)", animation: "fadeIn .6s ease .2s both" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}><img src={LOGO} alt="" style={{ width: 28, height: 28, borderRadius: 6 }} /><span style={{ fontSize: 18, fontWeight: 700, color: C.dark }}>Acceder</span></div>
-          <label style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4, color: C.textMuted }}>Email</label>
-          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="tucorreo@despacho.com" style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13.5, fontFamily: font, background: C.bg, marginBottom: 14 }} />
-          <label style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4, color: C.textMuted }}>Contraseña</label>
-          <input type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••" onKeyDown={e => e.key === "Enter" && go()} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13.5, fontFamily: font, background: C.bg, marginBottom: 18 }} />
+          <label htmlFor="login-email" style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4, color: C.textMuted }}>Email</label>
+          <input id="login-email" type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} placeholder="tucorreo@despacho.com" style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13.5, fontFamily: font, background: C.bg, marginBottom: 14 }} />
+          <label htmlFor="login-pass" style={{ fontSize: 12, fontWeight: 500, display: "block", marginBottom: 4, color: C.textMuted }}>Contraseña</label>
+          <input id="login-pass" type={verPass ? "text" : "password"} autoComplete="current-password" autoCapitalize="none" spellCheck={false} value={pass} onChange={e => setPass(e.target.value)} placeholder="••••" onKeyDown={e => e.key === "Enter" && go()} style={{ width: "100%", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13.5, fontFamily: font, background: C.bg, marginBottom: 8 }} />
+          <label htmlFor="login-ver-pass" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: C.textMuted, marginBottom: 16, cursor: "pointer", userSelect: "none" }}>
+            <input id="login-ver-pass" type="checkbox" checked={verPass} onChange={e => setVerPass(e.target.checked)} style={{ width: 15, height: 15, accentColor: C.primary, cursor: "pointer" }} />
+            Mostrar contraseña
+          </label>
           {err && <div style={{ padding: "9px 12px", borderRadius: 8, background: C.redSoft, color: C.red, fontSize: 12, marginBottom: 14, display: "flex", alignItems: "center", gap: 5 }}><AlertCircle size={13} />{err}</div>}
           {info && <div style={{ padding: "9px 12px", borderRadius: 8, background: C.greenSoft, color: C.green, fontSize: 12, marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 5 }}><CheckCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{info}</div>}
           <button onClick={go} disabled={ld} style={{ width: "100%", padding: 12, borderRadius: 10, fontSize: 14, fontWeight: 600, background: `linear-gradient(135deg,${C.primary},${C.violet})`, color: "#fff", opacity: ld ? .7 : 1 }}>{ld ? "Accediendo..." : "Iniciar sesión"}</button>

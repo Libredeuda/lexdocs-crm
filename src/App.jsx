@@ -35,6 +35,7 @@ function FullScreenLoader() {
 // Pantalla para fijar nueva contraseña tras volver del email de recuperación.
 function SetNewPassword({ onDone }) {
   const [pass, setPass] = useState("");
+  const [verPass, setVerPass] = useState(false);
   const [err, setErr] = useState("");
   const [ld, setLd] = useState(false);
   async function save() {
@@ -50,7 +51,11 @@ function SetNewPassword({ onDone }) {
       <div style={{ width: '100%', maxWidth: 380, background: '#fff', borderRadius: 20, padding: '36px 32px', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1E1E2E', margin: '0 0 6px' }}>Nueva contraseña</h2>
         <p style={{ fontSize: 13, color: '#7A7A8A', margin: '0 0 20px' }}>Introduce una contraseña nueva para acceder.</p>
-        <input type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="Nueva contraseña (mín. 8)" onKeyDown={e => e.key === 'Enter' && save()} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13.5, marginBottom: 14, fontFamily: "'Poppins', sans-serif" }} />
+        <input id="nueva-pass" type={verPass ? "text" : "password"} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={pass} onChange={e => setPass(e.target.value)} placeholder="Nueva contraseña (mín. 8)" onKeyDown={e => e.key === 'Enter' && save()} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1.5px solid #E5E5EA', fontSize: 13.5, marginBottom: 8, fontFamily: "'Poppins', sans-serif" }} />
+        <label htmlFor="nueva-ver-pass" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#7A7A8A', marginBottom: 14, cursor: 'pointer', userSelect: 'none' }}>
+          <input id="nueva-ver-pass" type="checkbox" checked={verPass} onChange={e => setVerPass(e.target.checked)} style={{ width: 15, height: 15, accentColor: '#5B6BF0', cursor: 'pointer' }} />
+          Mostrar contraseña
+        </label>
         {err && <div style={{ padding: '9px 12px', borderRadius: 8, background: '#FEECEC', color: '#E5484D', fontSize: 12, marginBottom: 14 }}>{err}</div>}
         <button onClick={save} disabled={ld} style={{ width: '100%', padding: 12, borderRadius: 10, fontSize: 14, fontWeight: 600, background: 'linear-gradient(135deg,#5B6BF0,#7C5BF0)', color: '#fff', border: 'none', cursor: 'pointer', opacity: ld ? .7 : 1, fontFamily: "'Poppins', sans-serif" }}>{ld ? 'Guardando...' : 'Guardar contraseña'}</button>
       </div>
