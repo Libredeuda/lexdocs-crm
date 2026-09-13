@@ -86,7 +86,7 @@ Hallazgos nuevos:
 
 ### ⚠️ Contraseña provisional débil (2026-09-13)
 
-A petición de José, la cuenta de administrador de `lexdocs-prod` tiene una **contraseña corta y fácil de adivinar** mientras se trabaja en fase de test (no se anota aquí: el repositorio es público). La base de datos es la misma para la app local y para la web publicada. **Cambiarla por una robusta antes de introducir datos reales** y, idealmente, activar la verificación en dos pasos (TOTP o código por email).
+José pidió poner a su cuenta de administrador de `lexdocs-prod` una **contraseña corta y fácil de adivinar** mientras se trabaja en fase de test. El cambio desde Claude Code quedó bloqueado por el sistema de permisos; si José la pone él mismo (SQL Editor), aplica este aviso (la contraseña no se anota aquí: el repositorio es público). La base de datos es la misma para la app local y para la web publicada. **Cambiarla por una robusta antes de introducir datos reales** y, idealmente, activar la verificación en dos pasos (TOTP o código por email).
 
 ### Fase 1 — seguridad barata (2026-09-11; activada en producción el 2026-09-12)
 
