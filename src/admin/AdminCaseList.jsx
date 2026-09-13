@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Search, Filter, AlertCircle, Clock, FileText, Building2, User, ChevronRight, Eye, UserCheck } from "lucide-react";
+import { Search, Clock, FileText, Building2, User, Eye, UserCheck, Scale } from "lucide-react";
 import { C, font } from "../constants";
 import { fmtMoney, daysUntil, fmtD } from "../utils";
 import AssignCaseModal from "./AssignCaseModal";
 import CaseDocuments from "./cases/CaseDocuments";
+import CaseJudicialModal from "./cases/CaseJudicialModal";
 
 export default function AdminCaseList({ cases, onRefresh }) {
   const [search, setSearch] = useState("");
@@ -11,6 +12,7 @@ export default function AdminCaseList({ cases, onRefresh }) {
   const [toast, setToast] = useState(null);
   const [assigningCase, setAssigningCase] = useState(null);
   const [reviewingCase, setReviewingCase] = useState(null);
+  const [judicialCase, setJudicialCase] = useState(null);
 
   const filtered = cases.filter(c => {
     const matchesSearch = !search || c.client.name.toLowerCase().includes(search.toLowerCase()) || c.client.caseId.toLowerCase().includes(search.toLowerCase());
@@ -152,6 +154,15 @@ export default function AdminCaseList({ cases, onRefresh }) {
                 >
                   <UserCheck size={11} /> Equipo
                 </span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); setJudicialCase(c); }}
+                  title="Situación judicial: presentación, notificaciones y resultado"
+                  style={{ padding: "6px 10px", borderRadius: 7, background: C.card, color: C.text, fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", border: `1px solid ${C.border}` }}
+                >
+                  <Scale size={11} /> Juzgado
+                </span>
               </div>
             </button>
           );
@@ -170,6 +181,16 @@ export default function AdminCaseList({ cases, onRefresh }) {
           caseData={assigningCase}
           onClose={() => setAssigningCase(null)}
           onSaved={() => { setAssigningCase(null); if (onRefresh) onRefresh(); }}
+        />
+      )}
+
+      {judicialCase && (
+        <CaseJudicialModal
+          caseId={judicialCase.id}
+          caseNumber={judicialCase.case_number || judicialCase.client?.caseId}
+          clientName={judicialCase.client?.name || "Cliente"}
+          onClose={() => setJudicialCase(null)}
+          onSaved={() => { setJudicialCase(null); showToast("Situación judicial guardada"); if (onRefresh) onRefresh(); }}
         />
       )}
 

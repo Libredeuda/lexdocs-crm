@@ -7,9 +7,11 @@ import {
 import { C, font } from "../constants";
 import { fmtMoney, daysUntil } from "../utils";
 import { supabase } from "../lib/supabase";
+import ResumenCEO from "./dashboard/ResumenCEO";
 
 export default function AdminDashboard({ cases, setPage, user }) {
-  const [tab, setTab] = useState("today");
+  const esDireccion = user?.role === "admin" || user?.role === "owner";
+  const [tab, setTab] = useState(esDireccion ? "resumen" : "today");
   const [todayData, setTodayData] = useState({ tasks: [], unreadMessages: 0, riskCases: [], pendingDocs: [], upcomingPayments: [] });
   const [metricsData, setMetricsData] = useState({ revenue: { current: 0, projected: 0 }, conversion: 0, byMonth: [], slaAvg: 0 });
   const [teamData, setTeamData] = useState([]);
@@ -195,8 +197,8 @@ export default function AdminDashboard({ cases, setPage, user }) {
 
   return (
     <div>
-      {/* KPI cards (siempre visibles) */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginBottom: 22 }}>
+      {/* KPI cards de la vista operativa (el resumen de dirección tiene las suyas) */}
+      {tab !== "resumen" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginBottom: 22 }}>
         {kpis.map((k, i) => (
           <div key={i} style={{ background: C.card, borderRadius: 14, padding: "20px 22px", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 46, height: 46, borderRadius: 12, background: k.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -208,11 +210,12 @@ export default function AdminDashboard({ cases, setPage, user }) {
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 18, borderBottom: `1px solid ${C.border}`, flexWrap: "wrap" }}>
         {[
+          ...(esDireccion ? [{ id: "resumen", l: "Resumen", icon: TrendingUp }] : []),
           { id: "today", l: "Hoy", icon: Target },
           { id: "metrics", l: "Métricas", icon: BarChart3 },
           { id: "team", l: "Equipo", icon: Users },
@@ -242,6 +245,7 @@ export default function AdminDashboard({ cases, setPage, user }) {
       </div>
 
       {/* Tab content */}
+      {tab === "resumen" && <ResumenCEO />}
       {tab === "today" && <TabToday data={todayData} setPage={setPage} loading={loading} />}
       {tab === "metrics" && <TabMetrics data={metricsData} cases={cases} avgProgress={avgProgress} phases={phases} phaseColors={phaseColors} loading={loading} />}
       {tab === "team" && <TabTeam team={teamData} loading={loading} />}

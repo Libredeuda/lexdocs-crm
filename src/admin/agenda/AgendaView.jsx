@@ -654,7 +654,40 @@ function EventCard({ ev, onToggle, onEdit }) {
             </span>
           )}
         </div>
+        {["meeting", "call"].includes(ev.event_type) && ev.event_date <= ymd(new Date()) && (
+          <Asistencia ev={ev} />
+        )}
       </div>
+    </div>
+  );
+}
+
+// ¿Se presentó el cliente? Alimenta la tasa de asistencia del resumen de dirección.
+function Asistencia({ ev }) {
+  const [valor, setValor] = useState(ev.attendance || null);
+  async function marcar(e, nuevo) {
+    e.stopPropagation();
+    const siguiente = valor === nuevo ? null : nuevo;
+    setValor(siguiente);
+    const { error } = await supabase.from("events").update({ attendance: siguiente }).eq("id", ev.id);
+    if (error) { setValor(valor); console.error("Asistencia:", error.message); }
+  }
+  const boton = (id, texto, color) => (
+    <button
+      onClick={(e) => marcar(e, id)}
+      aria-pressed={valor === id}
+      style={{
+        padding: "3px 9px", borderRadius: 6, fontSize: 11, fontWeight: 600, fontFamily: font, cursor: "pointer",
+        border: `1px solid ${valor === id ? color : C.border}`,
+        background: valor === id ? `${color}15` : C.card, color: valor === id ? color : C.textMuted,
+      }}
+    >{texto}</button>
+  );
+  return (
+    <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 11, color: C.textMuted }}>{valor ? "Asistencia:" : "¿Se presentó?"}</span>
+      {boton("attended", "Asistió", C.green)}
+      {boton("no_show", "No asistió", C.red)}
     </div>
   );
 }

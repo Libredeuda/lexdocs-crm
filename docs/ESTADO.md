@@ -84,6 +84,13 @@ Hallazgos nuevos:
 - ⏳ Sin hacer en esta sesión (sigue en la Fase 0 del roadmap): comprobar qué migraciones están aplicadas en producción y aplicar 015/016 si faltan.
 - ⏳ `npm audit` avisa de vulnerabilidades en dependencias de desarrollo (babel, vitest/mocker, brace-expansion, browserslist). No llegan al navegador; revisar con `npm audit fix` en una sesión aparte.
 
+### Resumen de dirección (dashboard de CEO) — 2026-09-13
+
+Petición de José: dashboard limpio para CEO con **Ventas** (leads nuevos, ventas cerradas = contrato firmado + primer pago, citas agendadas, tasa de asistencia, contactabilidad y mediana hasta primer contacto), **Marketing** (campañas y anuncios ganadores/perdedores) y **Expedientes** (pendientes de documentación, presentados, presentados +3 meses sin notificación del juzgado con lista de alertas, ganados, desestimados y tasa de éxito). Solo admin/owner. Periodos: este mes, mes anterior, 90 días y año, siempre comparados con el periodo anterior equivalente.
+- `migration-022-ceo-dashboard.sql`: `contacts.contacted_at` (trigger al salir de "lead"), `contract_signed_at`, UTM y campaña/anuncio de Meta; `events.attendance`; `cases.filed_at` (trigger al pasar a presentado), `last_court_notice_at`, `outcome` (won/partial/dismissed/withdrawn), `resolved_at`; tabla `marketing_spend` (solo escribe service_role); RPC `ceo_summary(desde, hasta)` SECURITY INVOKER que exige rol admin/owner. Probada con 15 casos en PGlite (dos despachos, RLS y roles).
+- Pantallas: pestaña **Resumen** en el dashboard (`src/admin/dashboard/ResumenCEO.jsx`), ventana **Juzgado** en cada expediente (`CaseJudicialModal.jsx`), botones **Asistió / No asistió** en reuniones y llamadas pasadas de la agenda, campo **Contrato firmado** y campaña de origen en la ficha del contacto. `webhook-meta-leads` pide `campaign_id/name` y `ad_id/name` de cada lead (sin desplegar hasta conectar Meta).
+- ⏳ Falta para Marketing completo: conectar la cuenta publicitaria de Meta y sincronizar el gasto diario en `marketing_spend` (coste por lead y por venta); capturar UTM en el formulario web cuando exista el punto de entrada de leads.
+
 ### Publicación de la web (2026-09-13)
 
 Vercel está **conectado a GitHub**: cada `git push` a `main` publica lexdocs-crm.vercel.app en producción (hay alias `lexdocs-crm-git-main-…`). El despliegue manual con `npx vercel deploy --prod` responde ahora "Not authorized". Login con casilla "Mostrar contraseña" y email normalizado, publicado y comprobado.

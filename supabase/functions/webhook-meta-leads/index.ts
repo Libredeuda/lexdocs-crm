@@ -124,7 +124,8 @@ serve(async (req: Request) => {
         if (META_PAGE_ACCESS_TOKEN) {
           try {
             const res = await fetch(
-              `https://graph.facebook.com/v21.0/${leadgenId}?access_token=${META_PAGE_ACCESS_TOKEN}`
+              // Campaña y anuncio de origen: alimentan el bloque Marketing del resumen de dirección
+              `https://graph.facebook.com/v21.0/${leadgenId}?fields=field_data,ad_id,ad_name,campaign_id,campaign_name,form_id&access_token=${META_PAGE_ACCESS_TOKEN}`
             );
             leadData = await res.json();
           } catch (e) {
@@ -154,6 +155,10 @@ serve(async (req: Request) => {
           status: "lead",
           notes_text: `Lead recibido de Meta Ads.\nForm ID: ${formId}\nLead ID: ${leadgenId}\nTodos los campos: ${JSON.stringify(fields, null, 2)}`,
           custom_fields: { meta_lead_id: leadgenId, meta_form_id: formId, raw_fields: fields },
+          meta_campaign_id: leadData.campaign_id || null,
+          meta_campaign_name: leadData.campaign_name || null,
+          meta_ad_id: leadData.ad_id || null,
+          meta_ad_name: leadData.ad_name || null,
         };
 
         const { data: created, error } = await supabase

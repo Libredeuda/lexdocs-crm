@@ -540,6 +540,8 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
                 { label: "Telefono", value: data.phone },
                 { label: "Empresa", value: data.company || "-" },
                 { label: "Fuente", value: sourceLabels[data.source] || data.source },
+                ...((data.meta_campaign_name || data.utm_campaign) ? [{ label: "Campaña", value: data.meta_campaign_name || data.utm_campaign }] : []),
+                ...((data.meta_ad_name || data.utm_content) ? [{ label: "Anuncio", value: data.meta_ad_name || data.utm_content }] : []),
               ].map((f, i) => (
                 <div key={i}>
                   <p style={{ fontSize: 10.5, color: C.textMuted, marginBottom: 3, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600 }}>{f.label}</p>
@@ -755,6 +757,7 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
                 {team.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
               </select>
             </div>
+            <ContratoFirmado contacto={data} onGuardado={loadData} />
           </Card>
 
           {/* AI Intelligence card */}
@@ -981,6 +984,39 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Fecha de firma del contrato: junto con el primer pago define una "venta cerrada"
+// en el resumen de dirección (decisión de José, 2026-09-13).
+function ContratoFirmado({ contacto, onGuardado }) {
+  const [fecha, setFecha] = useState(contacto?.contract_signed_at ? contacto.contract_signed_at.slice(0, 10) : "");
+  const [guardando, setGuardando] = useState(false);
+  async function guardar(nueva) {
+    setFecha(nueva);
+    setGuardando(true);
+    const { error } = await supabase.from("contacts")
+      .update({ contract_signed_at: nueva ? new Date(`${nueva}T12:00:00`).toISOString() : null })
+      .eq("id", contacto.id);
+    if (!error) {
+      await supabase.from("activities").insert({
+        org_id: contacto.org_id, entity_type: "contact", entity_id: contacto.id, action: "updated",
+        description: nueva ? `Contrato firmado el ${new Date(`${nueva}T12:00:00`).toLocaleDateString("es-ES")}` : "Fecha de firma del contrato eliminada",
+      });
+      onGuardado?.();
+    } else console.error("Contrato firmado:", error.message);
+    setGuardando(false);
+  }
+  return (
+    <div style={{ marginTop: 14 }}>
+      <label htmlFor="contrato-firmado" style={{ fontSize: 10.5, color: C.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600, display: "block" }}>Contrato firmado</label>
+      <input
+        id="contrato-firmado" type="date" value={fecha} disabled={guardando}
+        onChange={e => guardar(e.target.value)}
+        style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, fontFamily: font, background: C.card, color: C.text }}
+      />
+      {!fecha && <p style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Sin firmar. Con contrato firmado y primer pago, cuenta como venta cerrada.</p>}
     </div>
   );
 }
