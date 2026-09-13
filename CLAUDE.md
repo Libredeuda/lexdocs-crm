@@ -68,7 +68,7 @@ cd server && npm install && npm run sync:all   # workers BOE + CENDOJ (necesita 
 supabase functions deploy <nombre> --use-api --project-ref fmwmjxntbifqquyaddkx
 supabase secrets set KEY=VALUE --project-ref fmwmjxntbifqquyaddkx
 supabase db query --linked -f archivo.sql       # SQL contra producción (proyecto ya enlazado)
-npx vercel deploy --prod                        # publicar la web: Vercel NO está conectado a GitHub
+git push origin main                            # PUBLICA la web: Vercel está conectado a GitHub (desde 2026-09-13)
 ```
 
 Variables: copia `.env.example` a `.env`. Solo las `VITE_*` llegan al navegador. Todo lo demás son secretos de Edge Functions.

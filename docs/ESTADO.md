@@ -84,6 +84,10 @@ Hallazgos nuevos:
 - ⏳ Sin hacer en esta sesión (sigue en la Fase 0 del roadmap): comprobar qué migraciones están aplicadas en producción y aplicar 015/016 si faltan.
 - ⏳ `npm audit` avisa de vulnerabilidades en dependencias de desarrollo (babel, vitest/mocker, brace-expansion, browserslist). No llegan al navegador; revisar con `npm audit fix` en una sesión aparte.
 
+### Publicación de la web (2026-09-13)
+
+Vercel está **conectado a GitHub**: cada `git push` a `main` publica lexdocs-crm.vercel.app en producción (hay alias `lexdocs-crm-git-main-…`). El despliegue manual con `npx vercel deploy --prod` responde ahora "Not authorized". Login con casilla "Mostrar contraseña" y email normalizado, publicado y comprobado.
+
 ### ⚠️ Contraseña provisional débil (2026-09-13)
 
 José pidió poner a su cuenta de administrador de `lexdocs-prod` una **contraseña corta y fácil de adivinar** mientras se trabaja en fase de test. El cambio desde Claude Code quedó bloqueado por el sistema de permisos; si José la pone él mismo (SQL Editor), aplica este aviso (la contraseña no se anota aquí: el repositorio es público). La base de datos es la misma para la app local y para la web publicada. **Cambiarla por una robusta antes de introducir datos reales** y, idealmente, activar la verificación en dos pasos (TOTP o código por email).
