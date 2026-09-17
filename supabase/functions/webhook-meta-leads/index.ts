@@ -14,19 +14,21 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") || "libreapp_meta_2026"; // Token configurable
 const META_PAGE_ACCESS_TOKEN = Deno.env.get("META_PAGE_ACCESS_TOKEN"); // Para descargar lead full
-const META_APP_SECRET = Deno.env.get("META_APP_SECRET"); // App Secret de Meta — para verificar firma HMAC
+// App Secret de la app "LexDocs Leads" (distinta de la app "LexDocs" de WhatsApp,
+// Meta no permite combinar el caso de uso "API de marketing" con "WhatsApp" en una sola app).
+const META_LEADS_APP_SECRET = Deno.env.get("META_LEADS_APP_SECRET");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // Verifica la firma HMAC-SHA256 que Meta envía en cabecera X-Hub-Signature-256.
-// Si falta META_APP_SECRET: se rechaza salvo ALLOW_INSECURE_WEBHOOKS=true (solo dev).
+// Si falta META_LEADS_APP_SECRET: se rechaza salvo ALLOW_INSECURE_WEBHOOKS=true (solo dev).
 async function verifyMetaSignature(rawBody: string, signatureHeader: string | null): Promise<boolean> {
-  if (!META_APP_SECRET) {
+  if (!META_LEADS_APP_SECRET) {
     if (Deno.env.get("ALLOW_INSECURE_WEBHOOKS") === "true") {
-      console.warn("⚠️ META_APP_SECRET no configurado: firma NO verificada (ALLOW_INSECURE_WEBHOOKS=true, solo dev).");
+      console.warn("⚠️ META_LEADS_APP_SECRET no configurado: firma NO verificada (ALLOW_INSECURE_WEBHOOKS=true, solo dev).");
       return true;
     }
-    console.error("META_APP_SECRET no configurado: webhook rechazado.");
+    console.error("META_LEADS_APP_SECRET no configurado: webhook rechazado.");
     return false;
   }
   if (!signatureHeader) {
@@ -36,7 +38,7 @@ async function verifyMetaSignature(rawBody: string, signatureHeader: string | nu
   const expected = signatureHeader.startsWith("sha256=") ? signatureHeader.slice(7) : signatureHeader;
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(META_APP_SECRET),
+    new TextEncoder().encode(META_LEADS_APP_SECRET),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
