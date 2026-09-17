@@ -95,6 +95,36 @@ Petición de José: dashboard limpio para CEO con **Ventas** (leads nuevos, vent
 
 Vercel está **conectado a GitHub**: cada `git push` a `main` publica lexdocs-crm.vercel.app en producción (hay alias `lexdocs-crm-git-main-…`). El despliegue manual con `npx vercel deploy --prod` responde ahora "Not authorized". Login con casilla "Mostrar contraseña" y email normalizado, publicado y comprobado.
 
+### Transferencia de la Página "Libredeuda Abogados" a Grupo Libredeuda — pendiente, sin resolver (2026-09-16)
+
+La Página de Facebook `843251898879439` (la que recibe los leads de Meta Ads, vía el número 799950776118219 = negocio Pz Finanz SL) debería pasar a ser propiedad del portfolio **Grupo Libredeuda** (la sociedad actualmente responsable del negocio), según decisión de José. Se intentó 6 veces desde Configuración del negocio → Grupo Libredeuda → Páginas → Agregar → "Agregar una página de Facebook existente" y fallaron por motivos distintos, resueltos en cadena:
+
+1. **Bloqueada por un conjunto de datos de eventos vinculado** (`Datos formulario_MVP_Test_11-25`, ID `1321742036359862`, sin recibir eventos). Se resolvió: Configuración → Pz Finanz SL → Orígenes de datos → Conjuntos de datos y píxeles → ese dataset → botón "..." → **Desvincular página**. Esto ya está hecho.
+2. Tras resolver (1), la solicitud se sigue colgando indefinidamente al confirmar (el perfil de Instagram vinculado `@libredeudaabogados` se pide autenticar en el mismo paso). Probado desde José el mismo navegador con inicio de sesión de Instagram: el error real es **"No puedes reclamar esta página porque no eres administrador o solo tienes acceso a través de una agencia."**
+
+**Causa raíz identificada:** José (como Alberto Ayarza) tiene "acceso total" a la Página **vía asignación de tareas del Business Manager** (Pz Finanz SL), pero no el **rol clásico de Administrador de la Página** de Facebook que este flujo de reclamar/transferir exige. Son dos sistemas de permisos distintos en Meta.
+
+**Pendiente para retomarlo:** añadir a José como Administrador clásico de la Página desde la configuración de la propia Página en Facebook (Ajustes de la Página → Acceso a la Página, no desde Business Suite/Configuración del negocio), y reintentar la transferencia desde ahí. Alternativa: contactar con soporte de Meta.
+
+**Mientras tanto:** el acceso de tareas (Acceso total) que ya existe en Pz Finanz SL es suficiente para generar tokens y configurar el webhook de leads sin depender de esta transferencia.
+
+### Conexión con Meta (Meta Ads + WhatsApp) — en curso (2026-09-16)
+
+Petición de José: conectar Meta (leads de anuncios) y después WhatsApp y email. Decisiones tomadas en esta sesión: WhatsApp va **directo con la Cloud API de Meta** (no vía GoHighLevel, para no perder margen de maniobra aunque se pierdan las plantillas ya creadas en GHL); "conectar Meta" incluye tanto **leads de Meta Ads** como **WhatsApp Business**. Meta no permite combinar los casos de uso "API de marketing" (leads) y "WhatsApp" en la misma app — hacen falta **dos apps de Meta separadas**.
+
+**App de Meta creada:** `LexDocs`, App ID `2532426117236581`, vinculada al negocio **Grupo Libredeuda** (verificación de negocio ya completada, lo que evita la espera de Business Verification para poder enviar plantillas HSM más adelante). App Secret obtenido y **pendiente de guardar como `META_APP_SECRET`** en los secretos de Supabase (el comando `supabase secrets set` está bloqueado por el clasificador de permisos de Claude Code en esta sesión — hay que ejecutarlo a mano o ampliar el permiso).
+
+**WhatsApp — Paso 2: Configurar webhooks → ✅ hecho y verificado.** `webhook-whatsapp` desplegada en producción con `--no-verify-jwt` (sin esto, el gateway de Supabase devuelve 401 antes de que la función vea la petición de Meta). URL registrada: `https://fmwmjxntbifqquyaddkx.supabase.co/functions/v1/webhook-whatsapp?tenant_slug=libredeuda`, verify token `libreapp_meta_2026`. Falta suscribir el campo `messages` del webhook (el toggle no se activó al probarlo; puede depender de tener ya un número de teléfono asociado).
+
+**WhatsApp — número de prueba:** solicitado un número de prueba gratuito de Meta: `+1 (555) 148-3802`, Phone Number ID `1400774049775355`, WhatsApp Business Account ID `2555251991614325`. El botón "Generar token" del asistente nuevo de Meta falló repetidas veces sin dar error (posible bug de esa interfaz). Como alternativa, el Explorador de la API Graph (`developers.facebook.com/tools/explorer`) sí genera un token de usuario válido con los permisos `whatsapp_business_management` y `whatsapp_business_messaging` — pero es de corta duración (horas), solo sirve para pruebas puntuales, no para `WHATSAPP_TOKEN` en producción (hace falta un token permanente de System User).
+
+**Pendiente, requiere intervención de José:**
+- Guardar `META_APP_SECRET` en Supabase (bloqueado para Claude Code, ver arriba).
+- Decidir el **número de teléfono real** para producción (José pidió "un número nuevo dedicado a LexDocs", aún sin concretar cuál) y verificarlo — ojo con el límite de intentos de Meta al verificar por SMS/llamada (si falla, esperar 1 hora completa antes de reintentar, ver lección aprendida en la skill `ghl-expert`).
+- Crear un **System User** en Meta Business Suite (Configuración del negocio → Usuarios → Usuarios del sistema) para generar un `WHATSAPP_TOKEN` permanente, en vez de depender de tokens temporales del Explorador.
+- Segunda app de Meta para el caso de uso "API de marketing" (leads de Meta Ads) — aún no creada.
+- Desplegar `webhook-meta-leads` y `send-notification` (aún no están en producción) y configurar sus secretos (`META_PAGE_ACCESS_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_TOKEN`, `RESEND_API_KEY`).
+
 ### ⚠️ Contraseña provisional débil (2026-09-13)
 
 José pidió poner a su cuenta de administrador de `lexdocs-prod` una **contraseña corta y fácil de adivinar** mientras se trabaja en fase de test. El cambio desde Claude Code quedó bloqueado por el sistema de permisos; si José la pone él mismo (SQL Editor), aplica este aviso (la contraseña no se anota aquí: el repositorio es público). La base de datos es la misma para la app local y para la web publicada. **Cambiarla por una robusta antes de introducir datos reales** y, idealmente, activar la verificación en dos pasos (TOTP o código por email).
