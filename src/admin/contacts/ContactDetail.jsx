@@ -108,10 +108,10 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
   }, [contact?.id]);
 
   useEffect(() => {
-    loadPipelineStages()
+    loadPipelineStages(contact?.pipeline_id)
       .then(stages => setStatusConfig({ ...stagesToConfig(stages), archived: DEFAULT_STATUS_CONFIG.archived }))
       .catch(() => {});
-  }, []);
+  }, [contact?.pipeline_id]);
 
   async function loadData() {
     setLoading(true);

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Plus, Trash2, ChevronUp, ChevronDown, Check, AlertCircle, Lock } from "lucide-react";
+import { Plus, Trash2, ChevronUp, ChevronDown, Check, AlertCircle, Lock, Star, Pencil } from "lucide-react";
 import { C } from "../../constants";
 import { loadPipelineStages, savePipelineStages } from "../../lib/pipelineStages";
+import { loadPipelines, createPipeline, renamePipeline, deletePipeline } from "../../lib/pipelines";
 
 const font = "'Poppins', sans-serif";
 
@@ -9,6 +10,12 @@ let localIdCounter = 0;
 const newLocalId = () => `new-${++localIdCounter}`;
 
 export default function PipelineSettings() {
+  const [pipelines, setPipelines] = useState([]);
+  const [pipelineId, setPipelineId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [creatingPipeline, setCreatingPipeline] = useState(false);
+  const [newPipelineName, setNewPipelineName] = useState("");
   const [stages, setStages] = useState([]);
   const [original, setOriginal] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,13 +23,20 @@ export default function PipelineSettings() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { loadPipelinesList(); }, []);
+  useEffect(() => { if (pipelineId) load(pipelineId); }, [pipelineId]);
 
-  async function load() {
+  async function loadPipelinesList() {
+    const list = await loadPipelines();
+    setPipelines(list);
+    setPipelineId(list.find(p => p.is_default)?.id || list[0]?.id || null);
+  }
+
+  async function load(pid) {
     setLoading(true);
     setError("");
     try {
-      const data = await loadPipelineStages();
+      const data = await loadPipelineStages(pid);
       const withLocalId = data.map(s => ({ ...s, _localId: s.id }));
       setStages(withLocalId);
       setOriginal(data);
@@ -30,6 +44,34 @@ export default function PipelineSettings() {
       setError(e.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleCreatePipeline() {
+    if (!newPipelineName.trim()) return;
+    const pipeline = await createPipeline(newPipelineName);
+    setNewPipelineName("");
+    setCreatingPipeline(false);
+    setPipelines(prev => [...prev, pipeline]);
+    setPipelineId(pipeline.id);
+  }
+
+  async function handleRenamePipeline(id) {
+    if (!renameValue.trim()) { setRenamingId(null); return; }
+    await renamePipeline(id, renameValue);
+    setPipelines(prev => prev.map(p => p.id === id ? { ...p, name: renameValue.trim() } : p));
+    setRenamingId(null);
+  }
+
+  async function handleDeletePipeline(pipeline) {
+    if (pipeline.is_default) return;
+    if (!window.confirm(`¿Eliminar el pipeline "${pipeline.name}"? Solo se puede si no tiene contactos.`)) return;
+    try {
+      await deletePipeline(pipeline.id);
+      setPipelines(prev => prev.filter(p => p.id !== pipeline.id));
+      if (pipelineId === pipeline.id) setPipelineId(pipelines.find(p => p.is_default)?.id || null);
+    } catch (e) {
+      setError(e.message);
     }
   }
 
@@ -65,9 +107,9 @@ export default function PipelineSettings() {
     setSaving(true);
     setError("");
     try {
-      const saved = await savePipelineStages(stages, original);
+      const saved = await savePipelineStages(pipelineId, stages, original);
       showToast("Pipeline guardado");
-      await load();
+      await load(pipelineId);
       return saved;
     } catch (e) {
       setError(e.message);
@@ -102,9 +144,82 @@ export default function PipelineSettings() {
         </div>
       )}
 
+      {/* Pipelines */}
+      <div style={card}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>Pipelines</h3>
+        <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 14 }}>
+          Puedes tener varios pipelines (por ejemplo uno para leads y otro para clientes recurrentes). Elige cuál editar.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {pipelines.map(p => (
+            <div key={p.id} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 9,
+              background: p.id === pipelineId ? `${C.primary}0c` : "#fafafa",
+              border: `1px solid ${p.id === pipelineId ? C.primary + "40" : C.border}`,
+            }}>
+              {renamingId === p.id ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={e => setRenameValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleRenamePipeline(p.id); if (e.key === "Escape") setRenamingId(null); }}
+                  onBlur={() => handleRenamePipeline(p.id)}
+                  style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 13, fontFamily: font }}
+                />
+              ) : (
+                <button
+                  onClick={() => setPipelineId(p.id)}
+                  style={{ flex: 1, textAlign: "left", background: "none", border: "none", cursor: "pointer", fontSize: 13, fontFamily: font, fontWeight: p.id === pipelineId ? 700 : 500, color: C.text, padding: 0 }}
+                >
+                  {p.name}
+                </button>
+              )}
+              {p.is_default && <Star size={13} color={C.primary} title="Pipeline por defecto" fill={C.primary} />}
+              <button onClick={() => { setRenamingId(p.id); setRenameValue(p.name); }} title="Renombrar" style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", padding: 4, display: "flex" }}>
+                <Pencil size={13} />
+              </button>
+              {!p.is_default && (
+                <button onClick={() => handleDeletePipeline(p)} title="Eliminar" style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", padding: 4, display: "flex" }}>
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {creatingPipeline ? (
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <input
+              autoFocus
+              value={newPipelineName}
+              onChange={e => setNewPipelineName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleCreatePipeline(); if (e.key === "Escape") setCreatingPipeline(false); }}
+              placeholder="Nombre del pipeline"
+              style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.border}`, fontSize: 13, fontFamily: font, outline: "none" }}
+            />
+            <button onClick={handleCreatePipeline} style={{ background: C.primary, border: "none", borderRadius: 9, color: "#fff", padding: "0 14px", cursor: "pointer" }}>
+              <Check size={14} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setCreatingPipeline(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, marginTop: 10,
+              padding: "9px 14px", borderRadius: 9, background: `${C.primary}08`, color: C.primary,
+              fontSize: 12, fontWeight: 600, border: `1px dashed ${C.primary}30`, cursor: "pointer", fontFamily: font,
+            }}
+          >
+            <Plus size={14} /> Nuevo pipeline
+          </button>
+        )}
+      </div>
+
       {/* Stages */}
       <div style={card}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>Etapas del pipeline</h3>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+          Etapas de "{pipelines.find(p => p.id === pipelineId)?.name || ""}"
+        </h3>
         <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 18 }}>
           Estas son las columnas del Kanban de Contactos. Añade, renombra, recolorea, reordena o elimina las que quieras.
           Las etapas con <Lock size={10} style={{ verticalAlign: -1 }} /> tienen un significado especial en el CRM (venta cerrada / lead perdido) y no se pueden eliminar, pero sí renombrar y recolorear.

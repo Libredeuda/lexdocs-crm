@@ -1,21 +1,38 @@
 import { supabase } from "./supabase";
 import { getCurrentOrgId } from "./currentOrg";
 
-// Etapas configurables del pipeline de Contactos (tabla pipeline_stages,
-// migration-025). contacts.status guarda la "key" de la etapa.
+// Etapas configurables de un pipeline concreto (tabla pipeline_stages,
+// migration-025/026). contacts.status guarda la "key" de la etapa dentro del
+// pipeline al que pertenece el contacto (contacts.pipeline_id).
 // 'lead' es siempre el estado por defecto de un contacto nuevo; 'client'
 // (is_won) y 'lost' (is_lost) son las dos que usa el resto del sistema
 // (botón "Convertir a cliente" / marcar como perdido) y conviene no borrar.
 
-export async function loadPipelineStages() {
-  const orgId = await getCurrentOrgId();
-  const { data, error } = await supabase
-    .from("pipeline_stages")
-    .select("*")
-    .eq("org_id", orgId)
-    .order("position", { ascending: true });
+export async function loadPipelineStages(pipelineId) {
+  let query = supabase.from("pipeline_stages").select("*").order("position", { ascending: true });
+  if (pipelineId) {
+    query = query.eq("pipeline_id", pipelineId);
+  } else {
+    const orgId = await getCurrentOrgId();
+    query = query.eq("org_id", orgId);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
+}
+
+// Carga las etapas de TODOS los pipelines del despacho, agrupadas por pipeline_id.
+// Útil en pantallas que muestran contactos de varios pipelines a la vez (listado).
+export async function loadAllPipelineStagesByPipeline() {
+  const orgId = await getCurrentOrgId();
+  const { data, error } = await supabase
+    .from("pipeline_stages").select("*").eq("org_id", orgId).order("position", { ascending: true });
+  if (error) throw error;
+  const byPipeline = {};
+  for (const s of data || []) {
+    (byPipeline[s.pipeline_id] ||= []).push(s);
+  }
+  return byPipeline;
 }
 
 // Convierte la lista de etapas en un mapa { key: {label, color} } listo para
@@ -40,10 +57,11 @@ function slugify(label, existingKeys) {
   return key;
 }
 
-// Guarda la lista completa de etapas: upsert de las que tienen id (o crea las
-// nuevas con key generada a partir del label) y elimina las que ya no están
-// en la lista. `original` es la lista tal y como se cargó, para saber qué borrar.
-export async function savePipelineStages(stages, original) {
+// Guarda la lista completa de etapas de un pipeline: upsert de las que tienen
+// id (o crea las nuevas con key generada a partir del label) y elimina las
+// que ya no están en la lista. `original` es la lista tal y como se cargó,
+// para saber qué borrar.
+export async function savePipelineStages(pipelineId, stages, original) {
   const orgId = await getCurrentOrgId();
   const existingKeys = stages.filter(s => s.key).map(s => s.key);
 
@@ -56,6 +74,7 @@ export async function savePipelineStages(stages, original) {
   const rows = stages.map((s, i) => ({
     ...(s.id ? { id: s.id } : {}),
     org_id: orgId,
+    pipeline_id: pipelineId,
     key: s.key || slugify(s.label, existingKeys),
     label: s.label?.trim() || "Sin nombre",
     color: s.color || "#6b7280",

@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import {
   Globe, Users, Megaphone, PenLine, MessageCircle, Code,
   ArrowUp, ArrowDown, PhoneCall, MessageSquare, Tag, FileText,
-  CheckSquare, CalendarPlus,
+  CheckSquare, CalendarPlus, ChevronDown, Plus, Check, X,
 } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from '../../lib/supabase';
 import { loadPipelineStages } from '../../lib/pipelineStages';
+import { loadPipelines, createPipeline } from '../../lib/pipelines';
 
 const sourceConfig = {
   website: { label: 'Web', icon: Globe },
@@ -37,6 +38,12 @@ const sortOptions = [
 export default function ContactPipeline({ setPage, setSelectedContact }) {
   const [contacts, setContacts] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [pipelines, setPipelines] = useState([]);
+  const [pipelineId, setPipelineId] = useState(null);
+  const [pipelinesLoading, setPipelinesLoading] = useState(true);
+  const [showPipelinePicker, setShowPipelinePicker] = useState(false);
+  const [creatingPipeline, setCreatingPipeline] = useState(false);
+  const [newPipelineName, setNewPipelineName] = useState("");
   const [dragOverCol, setDragOverCol] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
@@ -45,19 +52,42 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
   const [sortDir, setSortDir] = useState('desc');
 
   useEffect(() => {
-    async function load() {
-      const [{ data }, stages] = await Promise.all([
-        supabase
-          .from('contacts')
-          .select('*, assigned_user:users!contacts_assigned_to_fkey(full_name)')
-          .not('status', 'eq', 'archived'),
-        loadPipelineStages(),
-      ]);
-      setContacts(data || []);
-      setColumns(stages.map(s => ({ key: s.key, label: s.label, color: s.color, bg: `${s.color}14` })));
+    async function loadInitial() {
+      const list = await loadPipelines();
+      setPipelines(list);
+      setPipelineId(list.find(p => p.is_default)?.id || list[0]?.id || null);
+      setPipelinesLoading(false);
     }
-    load();
+    loadInitial();
   }, []);
+
+  useEffect(() => {
+    if (!pipelineId) return;
+    loadBoard(pipelineId);
+  }, [pipelineId]);
+
+  async function loadBoard(pid) {
+    const [{ data }, stages] = await Promise.all([
+      supabase
+        .from('contacts')
+        .select('*, assigned_user:users!contacts_assigned_to_fkey(full_name)')
+        .eq('pipeline_id', pid)
+        .not('status', 'eq', 'archived'),
+      loadPipelineStages(pid),
+    ]);
+    setContacts(data || []);
+    setColumns(stages.map(s => ({ key: s.key, label: s.label, color: s.color, bg: `${s.color}14` })));
+  }
+
+  async function handleCreatePipeline() {
+    if (!newPipelineName.trim()) return;
+    const pipeline = await createPipeline(newPipelineName);
+    setNewPipelineName("");
+    setCreatingPipeline(false);
+    setShowPipelinePicker(false);
+    setPipelines(prev => [...prev, pipeline]);
+    setPipelineId(pipeline.id);
+  }
 
   function sortContacts(list) {
     return [...list].sort((a, b) => {
@@ -113,12 +143,7 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
 
     if (error) {
       console.error('Error updating contact status:', error);
-      // Reload on error to revert
-      const { data } = await supabase
-        .from('contacts')
-        .select('*, assigned_user:users!contacts_assigned_to_fkey(full_name)')
-        .not('status', 'eq', 'archived');
-      setContacts(data || []);
+      loadBoard(pipelineId); // revertir con datos reales
     }
   }
 
@@ -135,7 +160,83 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
         marginBottom: 18, gap: 12, flexWrap: "wrap",
       }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>Pipeline</h2>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <button
+              onClick={() => setShowPipelinePicker(v => !v)}
+              disabled={pipelinesLoading}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                background: "none", border: "none", padding: 0, cursor: "pointer",
+              }}
+            >
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>
+                {pipelines.find(p => p.id === pipelineId)?.name || "Pipeline"}
+              </h2>
+              <ChevronDown size={16} color={C.textMuted} />
+            </button>
+
+            {showPipelinePicker && (
+              <>
+                <div onClick={() => { setShowPipelinePicker(false); setCreatingPipeline(false); }} style={{ position: "fixed", inset: 0, zIndex: 99 }} />
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100,
+                  background: C.card, border: `1px solid ${C.border}`, borderRadius: 12,
+                  boxShadow: "0 12px 32px rgba(0,0,0,.14)", minWidth: 240, padding: 6,
+                }}>
+                  {pipelines.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setPipelineId(p.id); setShowPipelinePicker(false); }}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                        width: "100%", padding: "9px 12px", borderRadius: 8, border: "none",
+                        background: p.id === pipelineId ? C.bg : "transparent",
+                        color: p.id === pipelineId ? C.primary : C.text,
+                        fontSize: 13, fontWeight: p.id === pipelineId ? 600 : 500,
+                        cursor: "pointer", fontFamily: font, textAlign: "left",
+                      }}
+                    >
+                      {p.name}
+                      {p.id === pipelineId && <Check size={14} />}
+                    </button>
+                  ))}
+                  <div style={{ borderTop: `1px solid ${C.border}`, margin: "6px 0" }} />
+                  {creatingPipeline ? (
+                    <div style={{ display: "flex", gap: 6, padding: "4px 6px" }}>
+                      <input
+                        autoFocus
+                        value={newPipelineName}
+                        onChange={e => setNewPipelineName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleCreatePipeline(); if (e.key === "Escape") setCreatingPipeline(false); }}
+                        placeholder="Nombre del pipeline"
+                        style={{
+                          flex: 1, padding: "7px 10px", borderRadius: 7, border: `1px solid ${C.border}`,
+                          fontSize: 12.5, fontFamily: font, outline: "none",
+                        }}
+                      />
+                      <button onClick={handleCreatePipeline} style={{ background: C.primary, border: "none", borderRadius: 7, color: "#fff", padding: "0 10px", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                        <Check size={14} />
+                      </button>
+                      <button onClick={() => setCreatingPipeline(false)} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", padding: "0 4px", display: "flex", alignItems: "center" }}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setCreatingPipeline(true)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6, width: "100%",
+                        padding: "9px 12px", borderRadius: 8, border: "none", background: "transparent",
+                        color: C.primary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font,
+                      }}
+                    >
+                      <Plus size={14} /> Nuevo pipeline
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           <p style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
             Arrastra los contactos entre columnas para actualizar su estado
           </p>
