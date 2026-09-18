@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { ArrowUp, ArrowDown, Minus, AlertTriangle, Megaphone, TrendingUp, Scale, Info } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from "../../lib/supabase";
+import { loadPipelineStages } from "../../lib/pipelineStages";
 
 // Resumen de dirección (solo admin/owner; lo comprueba también ceo_summary en la BD).
 // Tres bloques: ventas, marketing y expedientes, con comparación frente al
@@ -149,6 +150,50 @@ function TablaRanking({ titulo, filas, hayGasto, tono }) {
 
 const TIPO = { lso: "LSO", concurso: "Concurso", other: "Otro" };
 
+// Recuento en vivo de leads por etapa del pipeline (situación actual, no depende
+// del periodo elegido). Las etapas son las configuradas en Configuración → Pipeline.
+function PipelineActual() {
+  const [counts, setCounts] = useState(null);
+  const [stages, setStages] = useState(null);
+
+  useEffect(() => {
+    let vigente = true;
+    Promise.all([
+      supabase.from("contacts").select("status"),
+      loadPipelineStages(),
+    ]).then(([{ data, error }, stg]) => {
+      if (!vigente || error) return;
+      const c = {};
+      (data || []).forEach((row) => { c[row.status] = (c[row.status] || 0) + 1; });
+      setCounts(c);
+      setStages(stg);
+    });
+    return () => { vigente = false; };
+  }, []);
+
+  if (!counts || !stages) return null;
+  const total = stages.reduce((s, col) => s + (counts[col.key] || 0), 0);
+
+  return (
+    <div style={{ background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, padding: "16px 18px", marginTop: 12 }}>
+      <p style={{ fontSize: 11.5, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 12 }}>
+        Pipeline actual · {fmtNum(total)} leads
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        {stages.map((col) => (
+          <div key={col.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: C.bg, minWidth: 110 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: col.color, flexShrink: 0 }} />
+            <div>
+              <p style={{ fontSize: 17, fontWeight: 700, color: C.dark, lineHeight: 1.1 }}>{fmtNum(counts[col.key] || 0)}</p>
+              <p style={{ fontSize: 10.5, color: C.textMuted }}>{col.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ResumenCEO() {
   const [periodo, setPeriodo] = useState("mes");
   const [datos, setDatos] = useState(null);
@@ -240,6 +285,7 @@ export default function ResumenCEO() {
               <Tarjeta titulo="Contactabilidad" valor={fmtPct(contact)} modo="tasa" actual={contact} anterior={contactP}
                 detalle={v.horas_hasta_contacto != null ? `Primer contacto en ${String(v.horas_hasta_contacto).replace(".", ",")} h (mediana)` : "Leads contactados sobre los leads nuevos"} />
             </div>
+            <PipelineActual />
           </Seccion>
 
           {/* ─── Marketing ─── */}

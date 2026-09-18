@@ -1,31 +1,45 @@
-import { useState } from "react";
-import { Plus, Trash2, ChevronUp, ChevronDown, GripVertical, Check } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Trash2, ChevronUp, ChevronDown, Check, AlertCircle, Lock } from "lucide-react";
 import { C } from "../../constants";
+import { loadPipelineStages, savePipelineStages } from "../../lib/pipelineStages";
 
 const font = "'Poppins', sans-serif";
 
-const MOCK_STAGES = [
-  { id: '1', name: 'Nuevo lead', position: 1, color: '#3b82f6' },
-  { id: '2', name: 'Contactado', position: 2, color: '#f59e0b' },
-  { id: '3', name: 'Cualificado', position: 3, color: '#8b5cf6' },
-  { id: '4', name: 'Cliente', position: 4, color: '#22c55e' },
-  { id: '5', name: 'Perdido', position: 5, color: '#ef4444' },
-];
+let localIdCounter = 0;
+const newLocalId = () => `new-${++localIdCounter}`;
 
 export default function PipelineSettings() {
-  const [pipelineName, setPipelineName] = useState("Pipeline principal");
-  const [stages, setStages] = useState(MOCK_STAGES);
+  const [stages, setStages] = useState([]);
+  const [original, setOriginal] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await loadPipelineStages();
+      const withLocalId = data.map(s => ({ ...s, _localId: s.id }));
+      setStages(withLocalId);
+      setOriginal(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
   };
 
-  const updateStage = (id, field, value) => {
-    setStages((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s))
-    );
+  const updateStage = (localId, field, value) => {
+    setStages((prev) => prev.map((s) => (s._localId === localId ? { ...s, [field]: value } : s)));
   };
 
   const moveStage = (index, direction) => {
@@ -33,22 +47,34 @@ export default function PipelineSettings() {
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= newStages.length) return;
     [newStages[index], newStages[targetIndex]] = [newStages[targetIndex], newStages[index]];
-    setStages(newStages.map((s, i) => ({ ...s, position: i + 1 })));
+    setStages(newStages);
   };
 
-  const deleteStage = (id) => {
-    setStages((prev) =>
-      prev.filter((s) => s.id !== id).map((s, i) => ({ ...s, position: i + 1 }))
-    );
+  const deleteStage = (localId) => {
+    setStages((prev) => prev.filter((s) => s._localId !== localId));
   };
 
   const addStage = () => {
-    const newId = String(Date.now());
     setStages((prev) => [
       ...prev,
-      { id: newId, name: "", position: prev.length + 1, color: "#6b7280" },
+      { _localId: newLocalId(), id: null, key: null, label: "", color: "#6b7280", is_won: false, is_lost: false },
     ]);
   };
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    try {
+      const saved = await savePipelineStages(stages, original);
+      showToast("Pipeline guardado");
+      await load();
+      return saved;
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const card = {
     background: C.white, borderRadius: 14,
@@ -61,9 +87,7 @@ export default function PipelineSettings() {
     color: C.text, outline: "none", background: C.white,
   };
 
-  const label = {
-    fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6, display: "block",
-  };
+  if (loading) return <p style={{ fontSize: 13, color: C.textMuted }}>Cargando...</p>;
 
   return (
     <div style={{ maxWidth: 720, animation: "fadeIn .35s ease" }}>
@@ -78,107 +102,96 @@ export default function PipelineSettings() {
         </div>
       )}
 
-      {/* Pipeline name */}
-      <div style={card}>
-        <label style={label}>Nombre del pipeline</label>
-        <input
-          style={{ ...input, maxWidth: 400 }}
-          value={pipelineName}
-          onChange={(e) => setPipelineName(e.target.value)}
-        />
-      </div>
-
       {/* Stages */}
       <div style={card}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>Etapas</h3>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>Etapas del pipeline</h3>
         <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 18 }}>
-          Configura las etapas de tu pipeline de ventas
+          Estas son las columnas del Kanban de Contactos. Añade, renombra, recolorea, reordena o elimina las que quieras.
+          Las etapas con <Lock size={10} style={{ verticalAlign: -1 }} /> tienen un significado especial en el CRM (venta cerrada / lead perdido) y no se pueden eliminar, pero sí renombrar y recolorear.
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {stages.map((stage, i) => (
-            <div key={stage.id} style={{
-              display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-              padding: "10px 14px", borderRadius: 10,
-              border: `1px solid ${C.border}`, background: "#fafafa",
-              transition: ".15s",
-            }}>
-              {/* Drag handle icon */}
-              <GripVertical size={16} color={C.textLight} style={{ cursor: "grab", flexShrink: 0 }} />
-
-              {/* Position number */}
-              <span style={{
-                width: 24, height: 24, borderRadius: 6,
-                background: `${stage.color}18`, color: stage.color,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700, flexShrink: 0,
+          {stages.map((stage, i) => {
+            const locked = stage.is_won || stage.is_lost;
+            return (
+              <div key={stage._localId} style={{
+                display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                padding: "10px 14px", borderRadius: 10,
+                border: `1px solid ${C.border}`, background: "#fafafa",
+                transition: ".15s",
               }}>
-                {stage.position}
-              </span>
+                <span style={{
+                  width: 24, height: 24, borderRadius: 6,
+                  background: `${stage.color}18`, color: stage.color,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700, flexShrink: 0,
+                }}>
+                  {i + 1}
+                </span>
 
-              {/* Color picker */}
-              <input
-                type="color"
-                value={stage.color}
-                onChange={(e) => updateStage(stage.id, "color", e.target.value)}
-                style={{
-                  width: 32, height: 32, borderRadius: 8, border: `2px solid ${C.border}`,
-                  padding: 1, cursor: "pointer", background: C.white, flexShrink: 0,
-                }}
-              />
-
-              {/* Name */}
-              <input
-                style={{ ...input, flex: 1 }}
-                value={stage.name}
-                onChange={(e) => updateStage(stage.id, "name", e.target.value)}
-                placeholder="Nombre de la etapa"
-              />
-
-              {/* Up/Down */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <button
-                  onClick={() => moveStage(i, -1)}
-                  disabled={i === 0}
+                <input
+                  type="color"
+                  value={stage.color}
+                  onChange={(e) => updateStage(stage._localId, "color", e.target.value)}
                   style={{
-                    padding: 3, borderRadius: 4,
-                    background: i === 0 ? "#eee" : `${C.primary}10`,
-                    color: i === 0 ? "#ccc" : C.primary,
+                    width: 32, height: 32, borderRadius: 8, border: `2px solid ${C.border}`,
+                    padding: 1, cursor: "pointer", background: C.white, flexShrink: 0,
+                  }}
+                />
+
+                <input
+                  style={{ ...input, flex: 1, minWidth: 140 }}
+                  value={stage.label}
+                  onChange={(e) => updateStage(stage._localId, "label", e.target.value)}
+                  placeholder="Nombre de la etapa"
+                />
+
+                {locked && <Lock size={13} color={C.textMuted} title={stage.is_won ? "Marca venta cerrada" : "Marca lead perdido"} />}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <button
+                    onClick={() => moveStage(i, -1)}
+                    disabled={i === 0}
+                    style={{
+                      padding: 3, borderRadius: 4, border: "none", cursor: i === 0 ? "default" : "pointer",
+                      background: i === 0 ? "#eee" : `${C.primary}10`,
+                      color: i === 0 ? "#ccc" : C.primary,
+                    }}
+                  >
+                    <ChevronUp size={13} />
+                  </button>
+                  <button
+                    onClick={() => moveStage(i, 1)}
+                    disabled={i === stages.length - 1}
+                    style={{
+                      padding: 3, borderRadius: 4, border: "none", cursor: i === stages.length - 1 ? "default" : "pointer",
+                      background: i === stages.length - 1 ? "#eee" : `${C.primary}10`,
+                      color: i === stages.length - 1 ? "#ccc" : C.primary,
+                    }}
+                  >
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => deleteStage(stage._localId)}
+                  disabled={locked || stages.length <= 1}
+                  title={locked ? "Esta etapa no se puede eliminar" : "Eliminar etapa"}
+                  style={{
+                    padding: 6, borderRadius: 6, border: "none",
+                    cursor: locked || stages.length <= 1 ? "default" : "pointer",
+                    background: locked || stages.length <= 1 ? "#eee" : C.redSoft,
+                    color: locked || stages.length <= 1 ? "#ccc" : C.red,
+                    flexShrink: 0,
                   }}
                 >
-                  <ChevronUp size={13} />
-                </button>
-                <button
-                  onClick={() => moveStage(i, 1)}
-                  disabled={i === stages.length - 1}
-                  style={{
-                    padding: 3, borderRadius: 4,
-                    background: i === stages.length - 1 ? "#eee" : `${C.primary}10`,
-                    color: i === stages.length - 1 ? "#ccc" : C.primary,
-                  }}
-                >
-                  <ChevronDown size={13} />
+                  <Trash2 size={14} />
                 </button>
               </div>
-
-              {/* Delete */}
-              <button
-                onClick={() => deleteStage(stage.id)}
-                disabled={stages.length <= 2}
-                style={{
-                  padding: 6, borderRadius: 6,
-                  background: stages.length <= 2 ? "#eee" : C.redSoft,
-                  color: stages.length <= 2 ? "#ccc" : C.red,
-                  flexShrink: 0,
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Add stage */}
         <button
           onClick={addStage}
           style={{
@@ -186,64 +199,54 @@ export default function PipelineSettings() {
             padding: "10px 16px", borderRadius: 10, marginTop: 12,
             background: `${C.primary}08`, color: C.primary,
             fontSize: 12, fontWeight: 600, width: "100%",
-            justifyContent: "center",
+            justifyContent: "center", cursor: "pointer",
             border: `1px dashed ${C.primary}30`,
           }}
         >
-          <Plus size={15} /> Anadir etapa
+          <Plus size={15} /> Añadir etapa
         </button>
       </div>
 
       {/* Preview */}
       <div style={card}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 14 }}>Vista previa</h3>
-        <div style={{
-          display: "flex", gap: 8, overflowX: "auto",
-          padding: "4px 0",
-        }}>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 0" }}>
           {stages.map((stage) => (
-            <div key={stage.id} style={{
+            <div key={stage._localId} style={{
               flex: "0 0 auto", minWidth: 110,
               borderRadius: 10, overflow: "hidden",
               border: `1px solid ${C.border}`,
               background: C.white,
             }}>
-              <div style={{
-                height: 4, background: stage.color,
-              }} />
+              <div style={{ height: 4, background: stage.color }} />
               <div style={{ padding: "10px 12px" }}>
                 <p style={{ fontSize: 11, fontWeight: 600, color: C.text, whiteSpace: "nowrap" }}>
-                  {stage.name || "Sin nombre"}
+                  {stage.label || "Sin nombre"}
                 </p>
-                <p style={{ fontSize: 10, color: C.textMuted, marginTop: 3 }}>0 contactos</p>
-              </div>
-              {/* Mini placeholder cards */}
-              <div style={{ padding: "0 8px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
-                {[1, 2].map((n) => (
-                  <div key={n} style={{
-                    height: 18, borderRadius: 4,
-                    background: `${stage.color}10`,
-                    border: `1px solid ${stage.color}15`,
-                  }} />
-                ))}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Save */}
+      {error && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.red, fontSize: 12, marginBottom: 12 }}>
+          <AlertCircle size={14} /> {error}
+        </div>
+      )}
+
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button
-          onClick={() => showToast("Pipeline guardado")}
+          onClick={handleSave}
+          disabled={saving}
           style={{
-            padding: "11px 32px", borderRadius: 10,
+            padding: "11px 32px", borderRadius: 10, border: "none",
             background: `linear-gradient(135deg, ${C.primary}, ${C.violet})`,
-            color: "#fff", fontSize: 13, fontWeight: 600,
+            color: "#fff", fontSize: 13, fontWeight: 600, cursor: saving ? "wait" : "pointer",
             boxShadow: `0 4px 16px ${C.primary}30`,
           }}
         >
-          Guardar pipeline
+          {saving ? "Guardando..." : "Guardar pipeline"}
         </button>
       </div>
     </div>

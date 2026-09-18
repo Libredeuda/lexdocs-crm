@@ -3,19 +3,25 @@ import {
   ArrowLeft, Mail, Phone, Building2, Edit3, PhoneCall, Send,
   UserCheck, Tag, Plus, Clock, FileText, MessageSquare, ChevronDown,
   CheckSquare, Calendar, Briefcase, Paperclip, Upload, Download, Trash2, AlertCircle, Scale,
-  Sparkles, RefreshCw, TrendingUp
+  Sparkles, RefreshCw, TrendingUp, Eye, MessageCircle, X, Video
 } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from "../../lib/supabase";
 import ContactForm from "./ContactForm";
 import TaskFormModal from "../agenda/TaskFormModal";
+import ViabilityForm from "./ViabilityForm";
+import DocumentPreviewModal from "./DocumentPreviewModal";
+import { loadVideoSettings, getVideoLink } from "../../lib/videoSettings";
+import { loadPipelineStages, stagesToConfig } from "../../lib/pipelineStages";
 
-const statusConfig = {
-  lead: { label: 'Lead', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' },
-  contacted: { label: 'Contactado', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
-  qualified: { label: 'Cualificado', color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)' },
-  client: { label: 'Cliente', color: '#22c55e', bg: 'rgba(34,197,94,0.08)' },
-  lost: { label: 'Perdido', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
+const PREVIEWABLE_RE = /\.(md|txt)$/i;
+function isPreviewable(f) {
+  return PREVIEWABLE_RE.test(f.name || "") || (f.mime_type || "").startsWith("text/");
+}
+
+// Solo se usa como respaldo mientras cargan las etapas reales del pipeline (configurables en Configuración → Pipeline).
+const DEFAULT_STATUS_CONFIG = {
+  lead: { label: 'Nuevo lead', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' },
   archived: { label: 'Archivado', color: '#7A7A8A', bg: 'rgba(122,122,138,0.08)' },
 };
 
@@ -30,6 +36,12 @@ const EVENT_LABEL = { task: 'Tarea', call: 'Llamada', meeting: 'Reunión', deadl
 
 export default function ContactDetail({ contact, setPage, setSelectedContact, user }) {
   const [data, setData] = useState({ ...contact });
+  const [statusConfig, setStatusConfig] = useState(DEFAULT_STATUS_CONFIG);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [showWhatsApp, setShowWhatsApp] = useState(false);
+  const [waMessage, setWaMessage] = useState("");
+  const [waSending, setWaSending] = useState(false);
+  const [waError, setWaError] = useState("");
   const [status, setStatus] = useState(contact.status);
   const [assignedTo, setAssignedTo] = useState(contact.assigned_to || "");
   const [tags, setTags] = useState([]);
@@ -94,6 +106,12 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
     if (!contact?.id) return;
     loadData();
   }, [contact?.id]);
+
+  useEffect(() => {
+    loadPipelineStages()
+      .then(stages => setStatusConfig({ ...stagesToConfig(stages), archived: DEFAULT_STATUS_CONFIG.archived }))
+      .catch(() => {});
+  }, []);
 
   async function loadData() {
     setLoading(true);
@@ -222,6 +240,57 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
     const { data, error } = await supabase.storage.from('documents').createSignedUrl(f.storage_path || f.file_path, 300);
     if (error || !data?.signedUrl) { showToast('Error generando enlace'); return; }
     window.open(data.signedUrl, '_blank');
+  }
+
+  async function handleStartVideoCall() {
+    try {
+      const settings = await loadVideoSettings();
+      const link = getVideoLink(settings);
+      window.open(link, "_blank", "noopener");
+      await supabase.from("activities").insert({
+        org_id: contact.org_id, entity_type: "contact", entity_id: contact.id,
+        action: "updated", description: "Videollamada iniciada",
+      });
+    } catch (e) {
+      showToast("Error abriendo la videollamada: " + (e.message || e));
+    }
+  }
+
+  async function handleSendWhatsApp() {
+    if (!waMessage.trim()) return;
+    setWaSending(true);
+    setWaError("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-whatsapp-message`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({ contact_id: contact.id, message: waMessage }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
+      setShowWhatsApp(false);
+      setWaMessage("");
+      showToast("WhatsApp enviado");
+      loadData();
+    } catch (e) {
+      setWaError(e.message || String(e));
+    } finally {
+      setWaSending(false);
+    }
+  }
+
+  async function handlePreviewFile(f) {
+    const { data, error } = await supabase.storage.from('documents').createSignedUrl(f.storage_path || f.file_path, 300);
+    if (error || !data?.signedUrl) { showToast('Error generando enlace'); return; }
+    try {
+      const res = await fetch(data.signedUrl);
+      const text = await res.text();
+      setPreviewFile({ name: f.name, content: text, signedUrl: data.signedUrl });
+    } catch (err) {
+      showToast('Error abriendo el documento');
+    }
   }
 
   async function handleDeleteFile(f) {
@@ -488,6 +557,8 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
             { key: "edit", icon: Edit3, label: "Editar", onClick: () => setShowEditForm(true) },
             { key: "call", icon: PhoneCall, label: "Llamar", onClick: () => {} },
             { key: "email", icon: Send, label: "Email", onClick: () => {} },
+            { key: "whatsapp", icon: MessageCircle, label: "WhatsApp", onClick: () => { setWaError(""); setShowWhatsApp(true); } },
+            { key: "video", icon: Video, label: "Videollamada", onClick: handleStartVideoCall },
           ].map(btn => (
             <button
               key={btn.key}
@@ -543,9 +614,9 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
                 ...((data.meta_campaign_name || data.utm_campaign) ? [{ label: "Campaña", value: data.meta_campaign_name || data.utm_campaign }] : []),
                 ...((data.meta_ad_name || data.utm_content) ? [{ label: "Anuncio", value: data.meta_ad_name || data.utm_content }] : []),
               ].map((f, i) => (
-                <div key={i}>
+                <div key={i} style={{ minWidth: 0 }}>
                   <p style={{ fontSize: 10.5, color: C.textMuted, marginBottom: 3, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 600 }}>{f.label}</p>
-                  <p style={{ fontSize: 13, fontWeight: 500, color: C.text, margin: 0 }}>{f.value}</p>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: C.text, margin: 0, wordBreak: "break-word", overflowWrap: "anywhere" }}>{f.value}</p>
                 </div>
               ))}
             </div>
@@ -553,6 +624,27 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
               <span>Creado: {new Date(data.created_at).toLocaleDateString("es-ES")}</span>
               <span>Actualizado: {new Date(data.updated_at).toLocaleDateString("es-ES")}</span>
             </div>
+          </Card>
+
+          {/* Datos del formulario (leads de Meta Ads / web con preguntas propias) */}
+          {data.custom_fields?.field_answers?.length > 0 && (
+            <Card title="Datos del formulario" icon={FileText}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {data.custom_fields.field_answers
+                  .filter(a => !["full_name", "first_name", "last_name", "phone_number", "phone", "email"].includes(a.key))
+                  .map((a, i) => (
+                    <div key={i}>
+                      <p style={{ fontSize: 11.5, color: C.textMuted, margin: 0, marginBottom: 3 }}>{a.label}</p>
+                      <p style={{ fontSize: 13, fontWeight: 500, color: C.text, margin: 0, wordBreak: "break-word" }}>{a.value}</p>
+                    </div>
+                  ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Formulario de viabilidad LSO + informe con IA */}
+          <Card title="Viabilidad LSO" icon={Scale}>
+            <ViabilityForm contact={data} onReportGenerated={loadData} />
           </Card>
 
           {/* Notes card */}
@@ -707,6 +799,12 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
                     {formatBytes(f.file_size)}{f.uploader?.full_name ? ` · ${f.uploader.full_name}` : ''} · {new Date(f.created_at).toLocaleDateString("es-ES")}
                   </p>
                 </div>
+                {isPreviewable(f) && (
+                  <button onClick={() => handlePreviewFile(f)} title="Previsualizar" style={{
+                    padding: 6, borderRadius: 7, border: "none", background: "transparent",
+                    cursor: "pointer", color: C.primary, display: "flex", alignItems: "center",
+                  }}><Eye size={14} /></button>
+                )}
                 <button onClick={() => handleDownloadFile(f)} title="Descargar" style={{
                   padding: 6, borderRadius: 7, border: "none", background: "transparent",
                   cursor: "pointer", color: C.textMuted, display: "flex", alignItems: "center",
@@ -984,6 +1082,67 @@ export default function ContactDetail({ contact, setPage, setSelectedContact, us
           </Card>
         </div>
       </div>
+      <DocumentPreviewModal
+        file={previewFile}
+        onClose={() => setPreviewFile(null)}
+        onDownload={() => previewFile?.signedUrl && window.open(previewFile.signedUrl, '_blank')}
+      />
+      {showWhatsApp && (
+        <div
+          onClick={() => !waSending && setShowWhatsApp(false)}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(20,20,30,.55)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 24,
+          }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{
+            background: C.card, borderRadius: 16, width: "100%", maxWidth: 420,
+            boxShadow: "0 20px 60px rgba(0,0,0,.3)", padding: 22,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <p style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: C.text, margin: 0, fontFamily: font }}>
+                <MessageCircle size={16} color="#25d366" /> Enviar WhatsApp
+              </p>
+              <button onClick={() => setShowWhatsApp(false)} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", display: "flex" }}>
+                <X size={16} />
+              </button>
+            </div>
+            <p style={{ fontSize: 11.5, color: C.textMuted, margin: "0 0 10px" }}>Para {data.first_name} {data.last_name} · {data.phone}</p>
+            <textarea
+              autoFocus rows={4} value={waMessage} onChange={e => setWaMessage(e.target.value)}
+              placeholder="Escribe el mensaje..."
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${C.border}`,
+                fontSize: 13, fontFamily: font, background: C.bg, color: C.text, outline: "none", resize: "vertical",
+              }}
+            />
+            {waError && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.red, fontSize: 11.5, marginTop: 8 }}>
+                <AlertCircle size={13} /> {waError}
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+              <button
+                onClick={() => setShowWhatsApp(false)} disabled={waSending}
+                style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.text, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSendWhatsApp} disabled={waSending || !waMessage.trim()}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none",
+                  background: "#25d366", color: "#fff", fontSize: 12, fontWeight: 700, cursor: waSending ? "wait" : "pointer",
+                  fontFamily: font, opacity: waSending || !waMessage.trim() ? 0.7 : 1,
+                }}
+              >
+                {waSending ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={13} />}
+                {waSending ? "Enviando..." : "Enviar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

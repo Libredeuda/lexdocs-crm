@@ -6,13 +6,10 @@ import {
 import { C, font } from "../../constants";
 import { useContacts } from '../../lib/hooks/useContacts';
 import ContactForm from "./ContactForm";
+import { loadPipelineStages, stagesToConfig } from "../../lib/pipelineStages";
 
-const statusConfig = {
-  lead: { label: 'Lead', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' },
-  contacted: { label: 'Contactado', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
-  qualified: { label: 'Cualificado', color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)' },
-  client: { label: 'Cliente', color: '#22c55e', bg: 'rgba(34,197,94,0.08)' },
-  lost: { label: 'Perdido', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
+const DEFAULT_STATUS_CONFIG = {
+  lead: { label: 'Nuevo lead', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' },
   archived: { label: 'Archivado', color: '#7A7A8A', bg: 'rgba(122,122,138,0.08)' },
 };
 
@@ -46,6 +43,15 @@ export default function ContactList({ setPage, setSelectedContact }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
+  const [statusConfig, setStatusConfig] = useState(DEFAULT_STATUS_CONFIG);
+  const [stages, setStages] = useState([]);
+
+  useEffect(() => {
+    loadPipelineStages().then(s => {
+      setStages(s);
+      setStatusConfig({ ...stagesToConfig(s), archived: DEFAULT_STATUS_CONFIG.archived });
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchContacts({
@@ -99,11 +105,7 @@ export default function ContactList({ setPage, setSelectedContact }) {
 
   const statusFilters = [
     { k: "all", l: "Todos" },
-    { k: "lead", l: "Lead" },
-    { k: "contacted", l: "Contactado" },
-    { k: "qualified", l: "Cualificado" },
-    { k: "client", l: "Cliente" },
-    { k: "lost", l: "Perdido" },
+    ...stages.map(s => ({ k: s.key, l: s.label })),
   ];
 
   return (

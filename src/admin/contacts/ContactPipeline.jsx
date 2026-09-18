@@ -1,18 +1,12 @@
 import { useState, useEffect } from "react";
 import {
   Globe, Users, Megaphone, PenLine, MessageCircle, Code,
-  GripVertical, User
+  ArrowUp, ArrowDown, PhoneCall, MessageSquare, Tag, FileText,
+  CheckSquare, CalendarPlus,
 } from "lucide-react";
 import { C, font } from "../../constants";
 import { supabase } from '../../lib/supabase';
-
-const columns = [
-  { key: 'lead', label: 'Nuevo lead', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' },
-  { key: 'contacted', label: 'Contactado', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
-  { key: 'qualified', label: 'Cualificado', color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)' },
-  { key: 'client', label: 'Cliente', color: '#22c55e', bg: 'rgba(34,197,94,0.08)' },
-  { key: 'lost', label: 'Perdido', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
-];
+import { loadPipelineStages } from '../../lib/pipelineStages';
 
 const sourceConfig = {
   website: { label: 'Web', icon: Globe },
@@ -23,31 +17,62 @@ const sourceConfig = {
   api: { label: 'API', icon: Code },
 };
 
+// Iconos de acceso rápido en cada tarjeta (todos abren la ficha del contacto)
+const cardActions = [
+  { icon: PhoneCall, label: "Llamar" },
+  { icon: MessageSquare, label: "Notas" },
+  { icon: Tag, label: "Etiquetas" },
+  { icon: FileText, label: "Documentos" },
+  { icon: CheckSquare, label: "Tareas" },
+  { icon: CalendarPlus, label: "Agendar" },
+];
+
+const sortOptions = [
+  { key: 'first_name', label: 'Nombre' },
+  { key: 'source', label: 'Fuente' },
+  { key: 'created_at', label: 'Creado el' },
+  { key: 'updated_at', label: 'Actualizado el' },
+];
+
 export default function ContactPipeline({ setPage, setSelectedContact }) {
   const [contacts, setContacts] = useState([]);
+  const [columns, setColumns] = useState([]);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
+  // Por defecto: el último contacto en entrar aparece el primero de la columna
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortDir, setSortDir] = useState('desc');
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase
-        .from('contacts')
-        .select('*, assigned_user:users!contacts_assigned_to_fkey(full_name)')
-        .not('status', 'eq', 'archived');
+      const [{ data }, stages] = await Promise.all([
+        supabase
+          .from('contacts')
+          .select('*, assigned_user:users!contacts_assigned_to_fkey(full_name)')
+          .not('status', 'eq', 'archived'),
+        loadPipelineStages(),
+      ]);
       setContacts(data || []);
+      setColumns(stages.map(s => ({ key: s.key, label: s.label, color: s.color, bg: `${s.color}14` })));
     }
     load();
   }, []);
 
-  function daysSince(dateStr) {
-    const now = new Date();
-    const then = new Date(dateStr);
-    return Math.floor((now - then) / (1000 * 60 * 60 * 24));
-  }
-
-  function getInitials(c) {
-    return ((c.first_name?.[0] || '') + (c.last_name?.[0] || '')).toUpperCase();
+  function sortContacts(list) {
+    return [...list].sort((a, b) => {
+      let av, bv;
+      if (sortBy === 'first_name') {
+        av = `${a.first_name || ''} ${a.last_name || ''}`.trim().toLowerCase();
+        bv = `${b.first_name || ''} ${b.last_name || ''}`.trim().toLowerCase();
+      } else {
+        av = a[sortBy] || '';
+        bv = b[sortBy] || '';
+      }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
   }
 
   function handleDragStart(e, contactId) {
@@ -105,11 +130,45 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: 18 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>Pipeline</h2>
-        <p style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
-          Arrastra los contactos entre columnas para actualizar su estado
-        </p>
+      <div style={{
+        display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+        marginBottom: 18, gap: 12, flexWrap: "wrap",
+      }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>Pipeline</h2>
+          <p style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+            Arrastra los contactos entre columnas para actualizar su estado
+          </p>
+        </div>
+
+        {/* Ordenar por */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, color: C.textMuted }}>Ordenar por</span>
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+            style={{
+              fontSize: 12, padding: "7px 10px", borderRadius: 8,
+              border: `1px solid ${C.border}`, background: C.card, color: C.text,
+              fontFamily: font, cursor: "pointer",
+            }}
+          >
+            {sortOptions.map(o => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+            title={sortDir === 'asc' ? 'Ascendente' : 'Descendente'}
+            style={{
+              width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.border}`,
+              background: C.card, display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", color: C.primary,
+            }}
+          >
+            {sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+          </button>
+        </div>
       </div>
 
       {/* Kanban board */}
@@ -119,7 +178,7 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
         overflowX: "auto", paddingBottom: 8,
       }}>
         {columns.map(col => {
-          const colContacts = contacts.filter(c => c.status === col.key);
+          const colContacts = sortContacts(contacts.filter(c => c.status === col.key));
           const isOver = dragOverCol === col.key;
 
           return (
@@ -160,11 +219,8 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {colContacts.map(c => {
                   const src = sourceConfig[c.source];
-                  const SrcIcon = src?.icon || Globe;
-                  const days = daysSince(c.updated_at);
                   const isDragging = draggingId === c.id;
                   const displayName = `${c.first_name} ${c.last_name || ''}`.trim();
-                  const assignedName = c.assigned_user?.full_name;
 
                   return (
                     <div
@@ -185,76 +241,45 @@ export default function ContactPipeline({ setPage, setSelectedContact }) {
                         transform: hoveredCard === c.id ? "translateY(-1px)" : "none",
                       }}
                     >
-                      {/* Name + initials */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                        <div style={{
-                          width: 30, height: 30, borderRadius: "50%",
-                          background: col.bg, display: "flex", alignItems: "center",
-                          justifyContent: "center", flexShrink: 0,
-                          fontSize: 11, fontWeight: 700, color: col.color,
-                        }}>
-                          {getInitials(c)}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{
-                            fontSize: 12.5, fontWeight: 600, color: C.text, margin: 0,
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          }}>
-                            {displayName}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Email */}
+                      {/* Nombre */}
                       <p style={{
-                        fontSize: 11, color: C.textMuted, margin: 0, marginBottom: 6,
+                        fontSize: 14, fontWeight: 700, color: C.text, margin: 0, marginBottom: 10,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>
-                        {c.email}
+                        {displayName}
                       </p>
 
-                      {/* Phone */}
-                      <p style={{ fontSize: 11, color: C.textMuted, margin: 0, marginBottom: 10 }}>
-                        {c.phone}
-                      </p>
+                      {/* Fuente */}
+                      <div style={{ display: "flex", fontSize: 11.5, marginBottom: 4 }}>
+                        <span style={{ color: C.textMuted, marginRight: 4 }}>Fuente:</span>
+                        <span style={{ color: C.text }}>{src?.label || c.source}</span>
+                      </div>
 
-                      {/* Footer: source + assigned + days */}
+                      {/* Valor */}
+                      <div style={{ display: "flex", fontSize: 11.5, marginBottom: 12 }}>
+                        <span style={{ color: C.textMuted, marginRight: 4 }}>Valor:</span>
+                        <span style={{ color: C.text }}>€0,00</span>
+                      </div>
+
+                      {/* Iconos de acceso rápido */}
                       <div style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         borderTop: `1px solid ${C.bg}`, paddingTop: 8,
                       }}>
-                        {/* Source badge */}
-                        <div style={{
-                          display: "flex", alignItems: "center", gap: 4,
-                          padding: "2px 8px", borderRadius: 6,
-                          background: C.bg, fontSize: 10, color: C.textMuted,
-                        }}>
-                          <SrcIcon size={10} /> {src?.label || c.source}
-                        </div>
-
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          {/* Assigned avatar */}
-                          {assignedName && (
-                            <div style={{
-                              width: 20, height: 20, borderRadius: "50%",
-                              background: "rgba(91,107,240,0.1)",
+                        {cardActions.map(({ icon: ActionIcon, label }) => (
+                          <button
+                            key={label}
+                            title={label}
+                            onClick={e => { e.stopPropagation(); handleCardClick(c); }}
+                            style={{
+                              background: "none", border: "none", padding: 4,
+                              cursor: "pointer", color: C.textMuted,
                               display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 8, fontWeight: 700, color: C.primary,
                             }}
-                              title={assignedName}
-                            >
-                              {assignedName.split(" ").map(w => w[0]).join("")}
-                            </div>
-                          )}
-
-                          {/* Days since update */}
-                          <span style={{
-                            fontSize: 10, color: days > 7 ? C.orange : C.textMuted,
-                            fontWeight: days > 7 ? 600 : 400,
-                          }}>
-                            {days === 0 ? "Hoy" : `${days}d`}
-                          </span>
-                        </div>
+                          >
+                            <ActionIcon size={15} />
+                          </button>
+                        ))}
                       </div>
                     </div>
                   );

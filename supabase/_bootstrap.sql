@@ -2796,6 +2796,294 @@ GRANT EXECUTE ON FUNCTION public.ceo_summary(date, date) TO authenticated;
 SELECT 'Migration 022 OK: datos y resumen de dirección' AS status;
 
 
+-- =============================================================================
+-- Migration 023: formulario de viabilidad LSO + informe de viabilidad con IA
+-- =============================================================================
+--
+-- Petición de José (2026-09-18): el setter/closer rellena un formulario con los
+-- datos del lead (situación económica, patrimonio, deuda pública, acreedores,
+-- requisitos de buena fe...) y, con un botón "Crear informe", esos datos se
+-- envían a Claude para redactar un informe de viabilidad jurídico-económica de
+-- la Ley de Segunda Oportunidad (arts. 486 y ss. del TRLC), siguiendo el modelo
+-- de informe real del despacho. El informe se guarda en la ficha del lead
+-- (tabla documents, igual que un archivo subido a mano) y se puede descargar.
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. Formulario de viabilidad (uno por contacto)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.lead_viability_forms (
+  id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id                      uuid NOT NULL REFERENCES public.organizations ON DELETE CASCADE,
+  contact_id                  uuid NOT NULL REFERENCES public.contacts ON DELETE CASCADE UNIQUE,
+
+  -- Situación personal
+  localidad                   text,
+  perfil                      text CHECK (perfil IS NULL OR perfil IN ('no_empresario', 'empresario')),
+  estado_civil                text CHECK (estado_civil IS NULL OR estado_civil IN ('soltero', 'casado', 'separado', 'divorciado', 'viudo', 'pareja_de_hecho')),
+  regimen_matrimonial         text CHECK (regimen_matrimonial IS NULL OR regimen_matrimonial IN ('gananciales', 'separacion_bienes', 'participacion', 'no_aplica')),
+
+  -- Situación económica
+  ingresos_mensuales          numeric,
+  origen_ingresos             text,
+  deuda_total_estimada        numeric,
+  origen_endeudamiento_anio   integer,
+
+  -- Patrimonio
+  tiene_vivienda               boolean NOT NULL DEFAULT false,
+  valor_vivienda                numeric,
+  tiene_vehiculos               boolean NOT NULL DEFAULT false,
+  otros_bienes                  text,
+
+  -- Deuda pública
+  deuda_aeat                    numeric NOT NULL DEFAULT 0,
+  deuda_tgss                    numeric NOT NULL DEFAULT 0,
+
+  -- Situación procesal
+  embargos_activos              boolean NOT NULL DEFAULT false,
+  detalle_embargos              text,
+
+  -- Requisitos de buena fe (art. 487 TRLC)
+  condena_penal_10anios         boolean NOT NULL DEFAULT false,
+  concurso_culpable_previo      boolean NOT NULL DEFAULT false,
+  sancion_grave_10anios         boolean NOT NULL DEFAULT false,
+  exoneracion_previa_5anios     boolean NOT NULL DEFAULT false,
+  acuerdo_extrajudicial_previo  boolean NOT NULL DEFAULT false,
+
+  -- Acreedores: [{ "nombre": "...", "tipo": "bancario"|"tarjeta"|"publico"|"otro", "importe": 1000 }]
+  acreedores                    jsonb NOT NULL DEFAULT '[]'::jsonb,
+
+  notas_setter                  text,
+
+  completado_por                uuid REFERENCES public.users ON DELETE SET NULL,
+  completado_at                 timestamptz,
+
+  created_at                    timestamptz NOT NULL DEFAULT now(),
+  updated_at                    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_viability_forms_contact ON public.lead_viability_forms (contact_id);
+CREATE INDEX IF NOT EXISTS idx_lead_viability_forms_org ON public.lead_viability_forms (org_id);
+
+CREATE TRIGGER trg_lead_viability_forms_updated_at
+  BEFORE UPDATE ON public.lead_viability_forms
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+ALTER TABLE public.lead_viability_forms ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own org data" ON public.lead_viability_forms
+  FOR SELECT USING (org_id = auth_org_id());
+CREATE POLICY "Users can insert own org data" ON public.lead_viability_forms
+  FOR INSERT WITH CHECK (org_id = auth_org_id());
+CREATE POLICY "Users can update own org data" ON public.lead_viability_forms
+  FOR UPDATE USING (org_id = auth_org_id());
+CREATE POLICY "Users can delete own org data" ON public.lead_viability_forms
+  FOR DELETE USING (org_id = auth_org_id());
+
+DROP POLICY IF EXISTS "mfa_email_gate" ON public.lead_viability_forms;
+CREATE POLICY "mfa_email_gate" ON public.lead_viability_forms
+  AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.mfa_email_ok())) WITH CHECK ((SELECT public.mfa_email_ok()));
+
+-- -----------------------------------------------------------------------------
+-- 2. Informes de viabilidad generados (histórico; el más reciente es "el" informe)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.lead_viability_reports (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id        uuid NOT NULL REFERENCES public.organizations ON DELETE CASCADE,
+  contact_id    uuid NOT NULL REFERENCES public.contacts ON DELETE CASCADE,
+  form_id       uuid REFERENCES public.lead_viability_forms ON DELETE SET NULL,
+  content       text NOT NULL,                                        -- informe en markdown
+  document_id   uuid REFERENCES public.documents ON DELETE SET NULL,  -- versión descargable (tabla documents)
+  generated_by  uuid REFERENCES public.users ON DELETE SET NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_viability_reports_contact ON public.lead_viability_reports (contact_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lead_viability_reports_org ON public.lead_viability_reports (org_id);
+
+ALTER TABLE public.lead_viability_reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own org data" ON public.lead_viability_reports
+  FOR SELECT USING (org_id = auth_org_id());
+CREATE POLICY "Users can insert own org data" ON public.lead_viability_reports
+  FOR INSERT WITH CHECK (org_id = auth_org_id());
+CREATE POLICY "Users can delete own org data" ON public.lead_viability_reports
+  FOR DELETE USING (org_id = auth_org_id());
+
+DROP POLICY IF EXISTS "mfa_email_gate" ON public.lead_viability_reports;
+CREATE POLICY "mfa_email_gate" ON public.lead_viability_reports
+  AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.mfa_email_ok())) WITH CHECK ((SELECT public.mfa_email_ok()));
+
+-- -----------------------------------------------------------------------------
+-- 3. Plantillas de prompts de IA (contenido, no esquema)
+-- -----------------------------------------------------------------------------
+-- Aquí vive el informe modelo real que usa generate-viability-report como
+-- ejemplo de estilo para Claude. Va en una tabla y no en el código de la Edge
+-- Function a propósito: ese informe modelo contiene datos de un caso real de
+-- un cliente (nombre, cifras, fecha) y el repositorio de este proyecto es
+-- público en GitHub. Sin políticas para 'authenticated': solo accesible desde
+-- las Edge Functions (service_role), nunca desde el navegador.
+CREATE TABLE IF NOT EXISTS public.ai_prompt_templates (
+  key         text PRIMARY KEY,
+  content     text NOT NULL,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.ai_prompt_templates ENABLE ROW LEVEL SECURITY;
+
+
+-- =============================================================================
+-- Migration 024: gastos mensuales, hijos menores y personas dependientes en el
+-- formulario de viabilidad LSO
+-- =============================================================================
+--
+-- Petición de José (2026-09-18): el informe de viabilidad necesita analizar
+-- insolvencia con ingresos Y gastos (no solo ingresos), y tener en cuenta si
+-- hay hijos menores o personas dependientes a cargo (relevante para la
+-- estrategia y para estimar el mínimo inembargable/cargas familiares).
+-- =============================================================================
+
+ALTER TABLE public.lead_viability_forms
+  ADD COLUMN IF NOT EXISTS gastos_mensuales           numeric,
+  ADD COLUMN IF NOT EXISTS tiene_hijos_menores         boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS num_hijos_menores           integer,
+  ADD COLUMN IF NOT EXISTS tiene_personas_dependientes boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS detalle_dependientes        text;
+
+
+-- =============================================================================
+-- Migration 025: etapas de pipeline configurables por despacho
+-- =============================================================================
+--
+-- Petición de José (2026-09-18): las columnas del Kanban de Contactos ya no son
+-- fijas (Nuevo lead/Contactado/Cualificado/Cliente/Perdido) — cada despacho debe
+-- poder añadir, quitar, renombrar, recolorear y reordenar sus propias etapas.
+-- La configuración inicial que pidió: Nuevo lead, Seguimiento IA, No contesta
+-- IA, Seguimiento, Llamada, Videollamada, Pendiente de cierre, Descartado, Venta.
+--
+-- El esquema base (schema.sql) ya tenía una tabla `pipeline_stages` colgando de
+-- `pipelines` (org → pipeline → stages), pero nunca se llegó a usar: el Kanban
+-- real (ContactPipeline.jsx) siempre trabajó directamente contra `contacts.status`
+-- con 5 columnas fijas en el código. Esta migración adapta esa tabla existente
+-- (en vez de crear una nueva) para que cuelgue directamente de `org_id` — más
+-- simple, sin el nivel intermedio de "pipelines" que nadie usa — y sea la fuente
+-- real de las columnas del Kanban.
+--
+-- contacts.status sigue siendo texto libre (guarda la "key" de la etapa), pero
+-- deja de estar restringido a una lista fija de 6 valores: ahora cualquier key
+-- definida en pipeline_stages es válida.
+--
+-- Dos keys son "especiales" y no cambian de significado en el resto del
+-- sistema (el botón "Convertir a cliente" sigue escribiendo 'client'; los
+-- leads llegan con 'lead' por defecto; nada más del backend depende de las
+-- demás etapas intermedias, así que renombrarlas/añadirlas es seguro):
+--   - 'lead'   → siempre existe, es el estado por defecto de un contacto nuevo.
+--   - 'client' → is_won = true (se usa al convertir un lead en cliente).
+--   - 'lost'   → is_lost = true (se usa al marcar un lead como perdido).
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 1. contacts.status deja de estar limitado a 6 valores fijos
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.contacts DROP CONSTRAINT IF EXISTS contacts_status_check;
+
+-- -----------------------------------------------------------------------------
+-- 2. Adaptar pipeline_stages: cuelga de org_id directamente (no de pipeline_id)
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.pipeline_stages
+  ADD COLUMN IF NOT EXISTS org_id      uuid REFERENCES public.organizations ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS key         text,
+  ADD COLUMN IF NOT EXISTS is_won      boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS is_lost     boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS updated_at  timestamptz NOT NULL DEFAULT now();
+
+-- Nunca se usó en producción (el Kanban real no leía de aquí): partimos de cero
+-- con la configuración pedida en vez de intentar migrar las 5 etapas de muestra.
+DELETE FROM public.pipeline_stages;
+
+DROP POLICY IF EXISTS "Users can view own org pipeline stages" ON public.pipeline_stages;
+DROP POLICY IF EXISTS "Users can insert own org pipeline stages" ON public.pipeline_stages;
+DROP POLICY IF EXISTS "Users can update own org pipeline stages" ON public.pipeline_stages;
+DROP POLICY IF EXISTS "Users can delete own org pipeline stages" ON public.pipeline_stages;
+
+ALTER TABLE public.pipeline_stages DROP COLUMN IF EXISTS pipeline_id;
+ALTER TABLE public.pipeline_stages RENAME COLUMN name TO label;
+
+ALTER TABLE public.pipeline_stages ALTER COLUMN org_id SET NOT NULL;
+ALTER TABLE public.pipeline_stages ALTER COLUMN key SET NOT NULL;
+ALTER TABLE public.pipeline_stages ALTER COLUMN color SET NOT NULL;
+ALTER TABLE public.pipeline_stages ALTER COLUMN color SET DEFAULT '#3b82f6';
+
+ALTER TABLE public.pipeline_stages DROP CONSTRAINT IF EXISTS pipeline_stages_org_key_unique;
+ALTER TABLE public.pipeline_stages ADD CONSTRAINT pipeline_stages_org_key_unique UNIQUE (org_id, key);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_stages_org ON public.pipeline_stages (org_id, position);
+
+DROP TRIGGER IF EXISTS trg_pipeline_stages_updated_at ON public.pipeline_stages;
+CREATE TRIGGER trg_pipeline_stages_updated_at
+  BEFORE UPDATE ON public.pipeline_stages
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE POLICY "Users can view own org data" ON public.pipeline_stages
+  FOR SELECT USING (org_id = auth_org_id());
+CREATE POLICY "Users can insert own org data" ON public.pipeline_stages
+  FOR INSERT WITH CHECK (org_id = auth_org_id());
+CREATE POLICY "Users can update own org data" ON public.pipeline_stages
+  FOR UPDATE USING (org_id = auth_org_id());
+CREATE POLICY "Users can delete own org data" ON public.pipeline_stages
+  FOR DELETE USING (org_id = auth_org_id());
+
+DROP POLICY IF EXISTS "mfa_email_gate" ON public.pipeline_stages;
+CREATE POLICY "mfa_email_gate" ON public.pipeline_stages
+  AS RESTRICTIVE FOR ALL TO authenticated
+  USING ((SELECT public.mfa_email_ok())) WITH CHECK ((SELECT public.mfa_email_ok()));
+
+-- -----------------------------------------------------------------------------
+-- 3. Sembrar la configuración inicial pedida, para despachos existentes...
+-- -----------------------------------------------------------------------------
+INSERT INTO public.pipeline_stages (org_id, key, label, color, position, is_won, is_lost)
+SELECT o.id, s.key, s.label, s.color, s.position, s.is_won, s.is_lost
+FROM public.organizations o
+CROSS JOIN (VALUES
+  ('lead',             'Nuevo lead',           '#3b82f6', 0, false, false),
+  ('seguimiento_ia',   'Seguimiento IA',       '#06b6d4', 1, false, false),
+  ('no_contesta_ia',   'No contesta IA',       '#f97316', 2, false, false),
+  ('seguimiento',      'Seguimiento',          '#f59e0b', 3, false, false),
+  ('llamada',          'Llamada',              '#8b5cf6', 4, false, false),
+  ('videollamada',     'Videollamada',         '#00897B', 5, false, false),
+  ('pendiente_cierre', 'Pendiente de cierre',  '#eab308', 6, false, false),
+  ('lost',             'Descartado',           '#ef4444', 7, false, true),
+  ('client',           'Venta',                '#22c55e', 8, true,  false)
+) AS s(key, label, color, position, is_won, is_lost)
+ON CONFLICT (org_id, key) DO NOTHING;
+
+-- -----------------------------------------------------------------------------
+-- 4. ...y para despachos nuevos a partir de ahora
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.seed_default_pipeline_stages()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO public.pipeline_stages (org_id, key, label, color, position, is_won, is_lost) VALUES
+    (NEW.id, 'lead',             'Nuevo lead',          '#3b82f6', 0, false, false),
+    (NEW.id, 'seguimiento_ia',   'Seguimiento IA',      '#06b6d4', 1, false, false),
+    (NEW.id, 'no_contesta_ia',   'No contesta IA',      '#f97316', 2, false, false),
+    (NEW.id, 'seguimiento',      'Seguimiento',         '#f59e0b', 3, false, false),
+    (NEW.id, 'llamada',          'Llamada',             '#8b5cf6', 4, false, false),
+    (NEW.id, 'videollamada',     'Videollamada',        '#00897B', 5, false, false),
+    (NEW.id, 'pendiente_cierre', 'Pendiente de cierre', '#eab308', 6, false, false),
+    (NEW.id, 'lost',             'Descartado',          '#ef4444', 7, false, true),
+    (NEW.id, 'client',           'Venta',               '#22c55e', 8, true,  false);
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_seed_default_pipeline_stages ON public.organizations;
+CREATE TRIGGER trg_seed_default_pipeline_stages
+  AFTER INSERT ON public.organizations
+  FOR EACH ROW EXECUTE FUNCTION public.seed_default_pipeline_stages();
+
+
 -- ── VERIFICACIÓN (el editor muestra el resultado de esta última consulta) ──
 select
   (select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE') as tablas,

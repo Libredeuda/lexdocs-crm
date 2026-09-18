@@ -141,6 +141,27 @@ serve(async (req: Request) => {
           fields[f.name] = (f.values || [])[0] || "";
         }
 
+        // Preguntas del formulario (label legible + opciones con su texto visible),
+        // para mostrar en la ficha del lead lo mismo que vio al rellenar el formulario
+        // en vez de los códigos internos ("10k_50k", "si_ya"...).
+        let fieldAnswers: { key: string; label: string; value: string }[] = [];
+        if (META_PAGE_ACCESS_TOKEN && formId) {
+          try {
+            const formRes = await fetch(
+              `https://graph.facebook.com/v21.0/${formId}?fields=questions&access_token=${META_PAGE_ACCESS_TOKEN}`
+            );
+            const formData = await formRes.json();
+            const questions: any[] = formData.questions || [];
+            fieldAnswers = Object.entries(fields).map(([key, rawValue]) => {
+              const q = questions.find((qq) => qq.key === key);
+              const option = q?.options?.find((o: any) => o.key === rawValue);
+              return { key, label: q?.label || key, value: option?.value || rawValue };
+            });
+          } catch (e) {
+            console.error("Error fetching form questions:", e);
+          }
+        }
+
         // Mapear campos comunes de Meta a nuestro schema
         const fullName = fields.full_name || fields.name || "";
         const [firstName, ...rest] = fullName.split(" ");
@@ -155,8 +176,8 @@ serve(async (req: Request) => {
           company: fields.company_name || null,
           source: "ads",
           status: "lead",
-          notes_text: `Lead recibido de Meta Ads.\nForm ID: ${formId}\nLead ID: ${leadgenId}\nTodos los campos: ${JSON.stringify(fields, null, 2)}`,
-          custom_fields: { meta_lead_id: leadgenId, meta_form_id: formId, raw_fields: fields },
+          notes_text: `Lead recibido de Meta Ads.\nForm ID: ${formId}\nLead ID: ${leadgenId}`,
+          custom_fields: { meta_lead_id: leadgenId, meta_form_id: formId, raw_fields: fields, field_answers: fieldAnswers },
           meta_campaign_id: leadData.campaign_id || null,
           meta_campaign_name: leadData.campaign_name || null,
           meta_ad_id: leadData.ad_id || null,

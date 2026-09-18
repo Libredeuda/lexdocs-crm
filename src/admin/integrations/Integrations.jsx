@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { Zap, Copy, Check, ExternalLink, AlertCircle, ChevronRight, Code, Globe, MessageCircle, Megaphone, Webhook, Sparkles } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Zap, Copy, Check, ExternalLink, AlertCircle, ChevronRight, Code, Globe, MessageCircle, Megaphone, Webhook, Sparkles, Video } from "lucide-react";
 import { C, font } from "../../constants";
 import { useTenant } from "../../lib/TenantContext";
+import { VIDEO_PROVIDERS, loadVideoSettings, saveVideoSettings } from "../../lib/videoSettings";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -66,6 +67,15 @@ export default function Integrations() {
       icon: MessageCircle,
       color: "#25d366",
       bg: "rgba(37,211,102,0.08)",
+      status: "Listo para conectar",
+    },
+    {
+      id: "video",
+      name: "Videollamada",
+      desc: "Elige con qué herramienta se abren las videollamadas desde la ficha del lead: Google Meet, Zoom, Microsoft Teams u otra.",
+      icon: Video,
+      color: "#00897B",
+      bg: "rgba(0,137,123,0.08)",
       status: "Listo para conectar",
     },
   ];
@@ -142,6 +152,120 @@ export default function Integrations() {
       )}
       {active === "whatsapp" && (
         <WhatsAppIntegration tenantSlug={tenantSlug} verifyToken={verifyToken} copy={copy} copied={copied} />
+      )}
+      {active === "video" && <VideoCallIntegration />}
+    </div>
+  );
+}
+
+// ════════════ VIDEOLLAMADA ════════════
+function VideoCallIntegration() {
+  const [provider, setProvider] = useState("meet");
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadVideoSettings()
+      .then(v => { setProvider(v.provider || "meet"); setUrl(v.url || ""); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    try {
+      await saveVideoSettings({ provider, url });
+      setSavedMsg("Guardado");
+      setTimeout(() => setSavedMsg(""), 2000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ background: C.card, borderRadius: 14, padding: "24px 28px", border: `2px solid #00897B30` }}>
+      <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+        <Video size={18} color="#00897B" /> Videollamada
+      </h3>
+      <p style={{ fontSize: 12.5, color: C.textMuted, marginBottom: 22, lineHeight: 1.6 }}>
+        Elige qué herramienta se abre cuando alguien del equipo pulsa <strong>"Videollamada"</strong> en la ficha de un lead o cliente. Por defecto, LibreApp abre una sala nueva de <strong>Google Meet</strong> al instante (sin configurar nada). Si tu despacho usa Zoom, Teams u otra herramienta con una sala fija, indícala aquí.
+      </p>
+
+      {loading ? (
+        <p style={{ fontSize: 12.5, color: C.textMuted }}>Cargando...</p>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10, marginBottom: 18 }}>
+            {Object.entries(VIDEO_PROVIDERS).map(([key, p]) => (
+              <button
+                key={key}
+                onClick={() => setProvider(key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderRadius: 10,
+                  border: provider === key ? `2px solid ${p.color}` : `1.5px solid ${C.border}`,
+                  background: provider === key ? `${p.color}12` : C.card,
+                  cursor: "pointer", fontFamily: font,
+                }}
+              >
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{p.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {provider !== "meet" && (
+            <div style={{ marginBottom: 18 }}>
+              <p style={{ fontSize: 10.5, fontWeight: 600, color: C.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                Enlace de la sala {VIDEO_PROVIDERS[provider].label}
+              </p>
+              <input
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                placeholder={provider === "zoom" ? "https://zoom.us/j/tu-sala-personal" : provider === "teams" ? "https://teams.microsoft.com/l/meetup-join/..." : "https://..."}
+                style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 9, border: `1.5px solid ${C.border}`,
+                  fontSize: 12.5, fontFamily: font, background: C.bg, color: C.text, outline: "none",
+                }}
+              />
+              <p style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>
+                Usa tu sala personal o de reuniones fija. Todo el equipo usará este mismo enlace al pulsar "Videollamada".
+              </p>
+            </div>
+          )}
+
+          {provider === "meet" && (
+            <Note color="#00897B">
+              No hace falta configurar nada: cada vez que alguien pulse "Videollamada" se abrirá una sala nueva de Google Meet lista para compartir.
+            </Note>
+          )}
+
+          {error && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.red, fontSize: 12, margin: "14px 0" }}>
+              <AlertCircle size={14} /> {error}
+            </div>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 18 }}>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                padding: "9px 18px", borderRadius: 9, border: "none",
+                background: "#00897B", color: "#fff", fontSize: 12.5, fontWeight: 600,
+                cursor: saving ? "wait" : "pointer", fontFamily: font,
+              }}
+            >
+              {saving ? "Guardando..." : "Guardar"}
+            </button>
+            {savedMsg && <span style={{ fontSize: 11.5, color: C.green, display: "flex", alignItems: "center", gap: 4 }}><Check size={13} /> {savedMsg}</span>}
+          </div>
+        </>
       )}
     </div>
   );
